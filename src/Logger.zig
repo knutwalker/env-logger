@@ -59,7 +59,7 @@ pub fn try_init(opts: InitOptions) TryInitError!void {
     }
 
     if (opts.filter) |filter| set_level: {
-        const level: InitOptions.LogLevel = switch (filter) {
+        const level = switch (filter) {
             .env_var => |env_var| level: {
                 var buf: [16 * @sizeOf(u16)]u8 = undefined;
                 var fba = std.heap.FixedBufferAllocator.init(buf[0..]);
@@ -69,16 +69,8 @@ pub fn try_init(opts: InitOptions) TryInitError!void {
                     error.InvalidWtf8, error.OutOfMemory => return TryInitError.InvalidFilter,
                 };
 
-                const matches = std.ascii.eqlIgnoreCase;
-                if (matches(env_filter, "trace")) break :level .trace;
-                if (matches(env_filter, "debug")) break :level .debug;
-                if (matches(env_filter, "info")) break :level .info;
-                if (matches(env_filter, "warn")) break :level .warn;
-                if (matches(env_filter, "warning")) break :level .warn;
-                if (matches(env_filter, "err")) break :level .err;
-                if (matches(env_filter, "error")) break :level .err;
-
-                return TryInitError.InvalidFilter;
+                break :level InitOptions.LogLevel.parse(env_filter) orelse
+                    return TryInitError.InvalidFilter;
             },
             .level => |level| level,
         };
@@ -195,6 +187,18 @@ pub const InitOptions = struct {
 
         pub inline fn fromStd(level: std.log.Level) LogLevel {
             return @enumFromInt(@intFromEnum(level));
+        }
+
+        pub fn parse(str: []const u8) ?LogLevel {
+            const matches = std.ascii.eqlIgnoreCase;
+            if (matches(str, "trace")) return .trace;
+            if (matches(str, "debug")) return .debug;
+            if (matches(str, "info")) return .info;
+            if (matches(str, "warn")) return .warn;
+            if (matches(str, "warning")) return .warn;
+            if (matches(str, "err")) return .err;
+            if (matches(str, "error")) return .err;
+            return null;
         }
 
         fn toStd(level: LogLevel) std.log.Level {
