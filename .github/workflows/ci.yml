@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  merge_group:
+  workflow_dispatch:
+
+# If two concurrent runs are started, prefer the latest one.
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+env:
+  ZIG_VERSION: 2024.11.0-mach
+
+jobs:
+  check:
+    name: Check code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - name: Run check
+        run: zig build check
+      - name: Check formatting
+        run: zig fmt --check .
+      - name: Check readme
+        run: |
+          zig build readme
+          git diff --exit-code -- README.md
+      - name: Run unit tests
+        run: zig build test
+      - name: Run example tests
+        run: zig build example
+
+  build:
+    name: Build website
+    runs-on: ubuntu-latest
+    needs: check
+    if: ${{ github.event_name == 'push' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - name: Build docs
+        run: zig build docs
+      - name: Upload docs
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: "zig-out/docs/"
+
+  publish:
+    name: Publish website
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.event_name == 'push' }}
+    permissions:
+      # Request sufficient permissions to publish the website.
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v3
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
