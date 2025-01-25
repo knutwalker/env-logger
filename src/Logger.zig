@@ -314,10 +314,10 @@ fn trace_log_fn(
     comptime format: []const u8,
     args: anytype,
 ) void {
-    if (std.mem.startsWith(u8, format, "TRACE: ")) {
+    if (comptime std.mem.startsWith(u8, format, "TRACE: ")) {
         log_fn(.trace, scope, format["TRACE: ".len..], args);
     } else {
-        const level = InitOptions.LogLevel.fromStd(message_level);
+        const level = comptime InitOptions.LogLevel.fromStd(message_level);
         log_fn(level, scope, format, args);
     }
 }
