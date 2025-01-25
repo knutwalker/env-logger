@@ -179,21 +179,18 @@ pub const InitOptions = struct {
         trace,
 
         pub fn more(level: *LogLevel) void {
-            level.* = switch (level.*) {
-                .err => .warn,
-                .warn => .info,
-                .info => .debug,
-                .debug, .trace => .trace,
-            };
+            LogLevel.move(level, 1);
         }
 
         pub fn less(level: *LogLevel) void {
-            level.* = switch (level.*) {
-                .err, .warn => .err,
-                .info => .warn,
-                .debug => .info,
-                .trace => .debug,
-            };
+            LogLevel.move(level, -1);
+        }
+
+        pub fn move(level: *LogLevel, dir: i64) void {
+            var level_value: i64 = @as(i64, @intFromEnum(level.*));
+            level_value +|= dir;
+            level_value = std.math.clamp(level_value, 0, @as(i64, std.meta.fields(LogLevel).len - 1));
+            level.* = @enumFromInt(@as(std.meta.Tag(LogLevel), @intCast(level_value)));
         }
 
         pub inline fn fromStd(level: std.log.Level) LogLevel {
@@ -208,6 +205,65 @@ pub const InitOptions = struct {
                 .debug => .debug,
                 .trace => .debug,
             };
+        }
+
+        test more {
+            const t = std.testing;
+
+            var level: LogLevel = .err;
+            level.more();
+            try t.expectEqual(.warn, level);
+            level.more();
+            try t.expectEqual(.info, level);
+            level.more();
+            try t.expectEqual(.debug, level);
+            level.more();
+            try t.expectEqual(.trace, level);
+            level.more();
+            try t.expectEqual(.trace, level);
+        }
+
+        test less {
+            const t = std.testing;
+
+            var level: LogLevel = .trace;
+            level.less();
+            try t.expectEqual(.debug, level);
+            level.less();
+            try t.expectEqual(.info, level);
+            level.less();
+            try t.expectEqual(.warn, level);
+            level.less();
+            try t.expectEqual(.err, level);
+            level.less();
+            try t.expectEqual(.err, level);
+        }
+
+        test move {
+            const t = std.testing;
+
+            var level: LogLevel = .err;
+
+            level.move(2);
+            try t.expectEqual(.info, level);
+
+            level.move(3);
+            try t.expectEqual(.trace, level);
+
+            level.move(-1);
+            try t.expectEqual(.debug, level);
+
+            level.move(-2);
+            try t.expectEqual(.warn, level);
+
+            level.move(-3);
+            try t.expectEqual(.err, level);
+
+            level.move(std.math.minInt(i64));
+            try t.expectEqual(.err, level);
+
+            level.move(std.math.maxInt(i64));
+            try t.expectEqual(.trace, level);
         }
     };
 };
