@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ZIG_VERSION: 2024.11.0-mach
+  ZIG_VERSION: master
 
 jobs:
   check:
