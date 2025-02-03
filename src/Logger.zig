@@ -6,7 +6,7 @@ const std = @import("std");
 ///
 /// If you want to set custom std_options as well, use [`setupWith`].
 pub fn setup(opts: SetupOptions) std.Options {
-    return setupWith(opts, .{});
+    return setupWith(opts, .{ .log_level = .debug });
 }
 
 /// Setup the logger using the given options and merge it with the given std_options.
@@ -17,7 +17,6 @@ pub fn setup(opts: SetupOptions) std.Options {
 pub fn setupWith(opts: SetupOptions, std_opts: std.Options) std.Options {
     var opts_copy = std_opts;
     opts_copy.logFn = setupFn(opts);
-    opts_copy.log_level = .debug;
     return opts_copy;
 }
 
