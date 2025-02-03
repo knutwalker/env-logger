@@ -13,7 +13,7 @@ pub fn build(b: *std.Build) void {
     all_step.dependOn(test_step);
     all_step.dependOn(example_step);
     all_step.dependOn(readme_step);
-    b.default_step.dependOn(all_step);
+    all_step.dependOn(docs_step);
 
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -63,7 +63,7 @@ pub fn build(b: *std.Build) void {
     // }}}
 
     // examples {{{
-    const Examples = enum {
+    const Example = enum {
         quick,
         simple,
         trace_level,
@@ -76,53 +76,33 @@ pub fn build(b: *std.Build) void {
         log_outputs,
         colors,
     };
-    const example_option = b.option([]const u8, "example", "The example to run");
-    const selected_example = if (example_option) |example_name| blk: {
-        break :blk std.meta.stringToEnum(Examples, example_name) orelse {
-            var available: [std.meta.fields(Examples).len + 2][]const u8 = undefined;
-            available[0] = b.fmt("Unknown example: {s}", .{example_name});
-            available[1] = "Available examples:";
+    const selected_examples = b.option([]const Example, "example", "The example to run") orelse &.{};
 
-            for (std.meta.fieldNames(Examples), available[2..]) |ex_name, *av| {
-                av.* = b.fmt("  {s}", .{ex_name});
-            }
-
-            const msg = std.mem.join(b.allocator, "\n", &available) catch @panic("OOM");
-            const s = b.addFail(msg);
-            example_step.dependOn(&s.step);
-            break :blk null;
-        };
-    } else null;
-
-    inline for (comptime std.meta.tags(Examples)) |example_tag| {
+    for (std.enums.values(Example)) |example_tag| {
         const example_name = @tagName(example_tag);
+        const example_path = b.fmt("examples/{s}.zig", .{example_name});
         const example = b.addExecutable(.{
             .name = example_name,
-            .root_source_file = b.path("examples/" ++ example_name ++ ".zig"),
+            .root_source_file = b.path(example_path),
             .target = target,
             .optimize = optimize,
             .single_threaded = true,
         });
         example.root_module.addImport("env-logger", mod);
 
-        const install_example = b.addInstallArtifact(example, .{});
+        all_step.dependOn(&example.step);
 
-        const run_example = b.addRunArtifact(example);
-        switch (example_tag) {
-            .log_outputs => {
-                if (b.args) |args| {
-                    run_example.addArgs(args);
-                }
-            },
-            else => {},
-        }
-
-        example_step.dependOn(&example.step);
-        example_step.dependOn(&install_example.step);
-        if (selected_example) |selected| {
-            if (selected == example_tag) {
-                example_step.dependOn(&run_example.step);
+        if (std.mem.indexOfScalar(Example, selected_examples, example_tag) != null) {
+            const run_example = b.addRunArtifact(example);
+            switch (example_tag) {
+                .log_outputs => {
+                    if (b.args) |args| {
+                        run_example.addArgs(args);
+                    }
+                },
+                else => {},
             }
+            example_step.dependOn(&run_example.step);
         }
     }
     // }}}
