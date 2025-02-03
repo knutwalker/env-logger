@@ -30,9 +30,9 @@ pub fn setupFn(opts: SetupOptions) fn (
     args: anytype,
 ) void {
     if (opts.enable_trace_level) {
-        return trace_log_fn;
+        return traceLogFn;
     } else {
-        return default_log_fn;
+        return defaultLogFn;
     }
 }
 
@@ -46,14 +46,14 @@ pub const SetupOptions = struct {
 ///
 /// Panics if called more than once.
 pub fn init(opts: InitOptions) void {
-    return try_init(opts) catch @panic("Failed to initialize logger");
+    return tryInit(opts) catch @panic("Failed to initialize logger");
 }
 
 /// Initialize the logger using the given options.
 /// This method needs to be called as early as possible, before any logging is done.
 ///
 /// Returns an error if called more than once.
-pub fn try_init(opts: InitOptions) TryInitError!void {
+pub fn tryInit(opts: InitOptions) TryInitError!void {
     if (is_initialized.cmpxchgStrong(false, true, .monotonic, .monotonic) != null) {
         return error.AlreadyInitialized;
     }
@@ -302,31 +302,31 @@ var output_color: std.io.tty.Config = .no_color;
 var output: ?union(enum) { file: std.fs.File, writer: std.io.AnyWriter } = null;
 var output_is_stderr: bool = false;
 
-fn default_log_fn(
+fn defaultLogFn(
     comptime message_level: std.log.Level,
     comptime scope: @TypeOf(.enum_literal),
     comptime format: []const u8,
     args: anytype,
 ) void {
     const level = comptime InitOptions.LogLevel.fromStd(message_level);
-    log_fn(level, scope, format, args);
+    logFn(level, scope, format, args);
 }
 
-fn trace_log_fn(
+fn traceLogFn(
     comptime message_level: std.log.Level,
     comptime scope: @TypeOf(.enum_literal),
     comptime format: []const u8,
     args: anytype,
 ) void {
     if (comptime std.mem.startsWith(u8, format, "TRACE: ")) {
-        log_fn(.trace, scope, format["TRACE: ".len..], args);
+        logFn(.trace, scope, format["TRACE: ".len..], args);
     } else {
         const level = comptime InitOptions.LogLevel.fromStd(message_level);
-        log_fn(level, scope, format, args);
+        logFn(level, scope, format, args);
     }
 }
 
-inline fn log_fn(
+inline fn logFn(
     comptime message_level: InitOptions.LogLevel,
     comptime scope: @TypeOf(.enum_literal),
     comptime format: []const u8,
@@ -351,7 +351,7 @@ inline fn log_fn(
 
             const writer = bw.writer();
 
-            log_impl(
+            logImpl(
                 impl_opts,
                 writer,
                 message_level,
@@ -361,7 +361,7 @@ inline fn log_fn(
             ) catch return;
         },
         .writer => |w| {
-            log_impl(
+            logImpl(
                 impl_opts,
                 w,
                 message_level,
@@ -373,7 +373,7 @@ inline fn log_fn(
     }
 }
 
-fn log_impl(
+fn logImpl(
     opts: Opts,
     writer: anytype,
     comptime message_level: InitOptions.LogLevel,
@@ -429,7 +429,7 @@ fn log_impl(
     }
 
     if (opts.logger) {
-        const width = target_width(target.len);
+        const width = targetWidth(target.len);
 
         try cfg.setColor(writer, .bold);
         try writer.print(
@@ -445,6 +445,6 @@ fn log_impl(
 
 var max_width: std.atomic.Value(usize) = .init(0);
 
-inline fn target_width(comptime width: usize) usize {
+inline fn targetWidth(comptime width: usize) usize {
     return @max(width, max_width.fetchMax(width, .monotonic));
 }
