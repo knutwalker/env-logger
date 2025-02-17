@@ -10,7 +10,7 @@ pub fn main() !void {
         .render_timestamp = true,
     });
 
-    if (!env_logger.level_enabled(.debug)) {
+    if (!env_logger.defaultLevelEnabled(.debug)) {
         std.debug.print("To see all log messages, run with `env ZIG_LOG=debug ...`\n", .{});
     }
 

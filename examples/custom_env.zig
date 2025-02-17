@@ -10,7 +10,7 @@ pub fn main() !void {
         .filter = .{ .env_var = "MY_LOG_ENV" },
     });
 
-    if (!env_logger.level_enabled(.debug)) {
+    if (!env_logger.defaultLevelEnabled(.debug)) {
         std.debug.print("To see all log messages, run with `env MY_LOG_ENV=debug ...`\n", .{});
     }
 

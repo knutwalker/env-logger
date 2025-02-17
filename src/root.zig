@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-pub const Logger = @import("Logger.zig");
-pub const LogLevel = Logger.InitOptions.LogLevel;
-pub const level_enabled = Logger.level_enabled;
-pub const set_log_level = Logger.set_log_level;
+const Logger = @import("Logger.zig");
+pub const Filter = @import("Filter.zig");
+pub const Builder = @import("Builder.zig");
+pub const Level = Filter.Level;
+pub const defaultLevelEnabled = Logger.defaultLevelEnabled;
+pub const levelEnabled = Logger.levelEnabled;
 
 pub const SetupOptions = Logger.SetupOptions;
 pub const setup = Logger.setup;
@@ -12,10 +14,11 @@ pub const setupFn = Logger.setupFn;
 
 pub const InitOptions = Logger.InitOptions;
 pub const init = Logger.init;
-pub const try_init = Logger.try_init;
+pub const tryInit = Logger.tryInit;
 
 test "force analysis" {
     comptime {
         @import("std").testing.refAllDecls(@This());
+        _ = Logger;
     }
 }

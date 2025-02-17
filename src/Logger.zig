@@ -1,5 +1,14 @@
 const std = @import("std");
 
+const Filter = @import("Filter.zig");
+const Builder = @import("Builder.zig");
+
+/// Options for `setup` functions.
+pub const SetupOptions = struct {
+    /// Whether to look for the TRACE message tag
+    enable_trace_level: bool = false,
+};
+
 /// Setup the logger using the given options.
 /// Returns the standard options that needs to be set as
 /// `pub const std_options: std.Options` in the root of your application.
@@ -29,95 +38,41 @@ pub fn setupFn(opts: SetupOptions) fn (
     args: anytype,
 ) void {
     if (opts.enable_trace_level) {
-        return traceLogFn;
+        return RtConfig.traceLogFn;
     } else {
-        return defaultLogFn;
+        return RtConfig.defaultLogFn;
     }
 }
 
-pub const SetupOptions = struct {
-    /// Whether to look for the TRACE message tag
-    enable_trace_level: bool = false,
-};
-
-/// Initialize the logger using the given options.
-/// This method needs to be called as early as possible, before any logging is done.
-///
-/// Panics if called more than once.
-pub fn init(opts: InitOptions) void {
-    return tryInit(opts) catch @panic("Failed to initialize logger");
-}
-
-/// Initialize the logger using the given options.
-/// This method needs to be called as early as possible, before any logging is done.
-///
-/// Returns an error if called more than once.
-pub fn tryInit(opts: InitOptions) TryInitError!void {
-    if (is_initialized.cmpxchgStrong(false, true, .monotonic, .monotonic) != null) {
-        return error.AlreadyInitialized;
-    }
-
-    if (opts.filter) |filter| set_level: {
-        const level = switch (filter) {
-            .env_var => |env_var| level: {
-                var buf: [16 * @sizeOf(u16)]u8 = undefined;
-                var fba = std.heap.FixedBufferAllocator.init(buf[0..]);
-
-                const env_filter = std.process.getEnvVarOwned(fba.allocator(), env_var) catch |err| switch (err) {
-                    error.EnvironmentVariableNotFound => break :set_level,
-                    error.InvalidWtf8, error.OutOfMemory => return TryInitError.InvalidFilter,
-                };
-
-                break :level InitOptions.LogLevel.parse(env_filter) orelse
-                    return TryInitError.InvalidFilter;
-            },
-            .level => |level| level,
-        };
-
-        set_log_level(level);
-    }
-
-    switch (opts.output) {
-        .stderr => {
-            output_is_stderr = true;
-            output = .{ .file = std.io.getStdErr() };
-            if (opts.enable_color) {
-                output_color = std.io.tty.detectConfig(output.?.file);
-            }
-        },
-        .stdout => {
-            output = .{ .file = std.io.getStdOut() };
-            if (opts.enable_color) {
-                output_color = std.io.tty.detectConfig(output.?.file);
-            }
-        },
-        .file => |file| {
-            const end = try file.getEndPos();
-            try file.seekTo(end);
-
-            output = .{ .file = file };
-        },
-        .writer => |writer| {
-            output = .{ .writer = writer };
-        },
-    }
-
-    if (opts.force_color) {
-        output_color = .escape_codes;
-    }
-
-    impl_opts = .{
-        .color = opts.enable_color,
-        .level = opts.render_level,
-        .timestamp = opts.render_timestamp,
-        .logger = opts.render_logger,
-    };
-}
-
+/// Options for `init` functions.
 pub const InitOptions = struct {
     /// How to configure the initial log level.
     /// Set to `null` to keep the default (only errors are logged).
-    filter: ?Filter = .{ .env_var = "ZIG_LOG" },
+    filter: ?FilterOpts = .{ .env_var = "ZIG_LOG" },
+
+    /// The allocator which is used for initializing the filter.
+    ///
+    /// The allocator is use for reading and parsing the `filter` env var
+    /// (if set to `.env_var`), parsing the resulting filter string,
+    /// and allocating the resulting filter config.
+    ///
+    /// Since the filter is supposed to be kept for the remainder
+    /// of the program's lifetime, you can set two different allocators, one
+    /// for all the parsing (e.g. a gpa, like the DebugAllocator), ond another
+    /// one for the final filter allocation (e.g. an arena allocator).
+    allocator: union(enum) {
+        /// Creates and leakes an `ArenaAllocator(page_allocator)`.
+        leaky,
+
+        /// Use one allocator for all allocations.
+        arena: std.mem.Allocator,
+
+        /// Use separate allocators for parsing and filter allocation.
+        split: struct {
+            parse_gpa: std.mem.Allocator,
+            filter_arena: std.mem.Allocator,
+        },
+    } = .leaky,
 
     /// Whether to attempt to render colors
     /// Rendering still goes through [`std.io.tty.detectConfig`].
@@ -138,12 +93,70 @@ pub const InitOptions = struct {
     /// Where to log to. See [`Output`].
     output: Output = .stderr,
 
-    pub const Filter = union(enum) {
+    pub const FilterOpts = union(enum) {
         /// The env variable to check for logging configuration.
         env_var: []const u8,
 
-        /// The log level to use.
-        level: LogLevel,
+        /// A filter config that will be parsed.
+        parse: []const u8,
+
+        /// A log level to use for all loggers.
+        level: Filter.Level,
+
+        /// A list of filter directives. Should be created with `Builder`.
+        filter: Filter,
+
+        fn intoFilter(
+            self: FilterOpts,
+            parse_gpa: std.mem.Allocator,
+            filter_arena: ?std.mem.Allocator,
+        ) TryInitError!Filter {
+            switch (self) {
+                .env_var => |env_var| {
+                    // we can delay hitting the gpa for parsing the env var as it is likely smaller
+                    var fba = std.heap.stackFallback(4096, parse_gpa);
+                    const stack_gpa = fba.get();
+
+                    const env_filters = std.process.getEnvVarOwned(stack_gpa, env_var) catch |err| switch (err) {
+                        error.EnvironmentVariableNotFound => return .default,
+                        error.InvalidWtf8 => return TryInitError.InvalidEnvValue,
+                        else => |e| return e,
+                    };
+                    defer stack_gpa.free(env_filters);
+
+                    // if we have a separate filter_arena, we can use the stack fallback for the builder
+                    // to further avoid hitting the actual allocator.
+                    const builder_gpa = if (filter_arena == null) parse_gpa else stack_gpa;
+
+                    return try parseFilter(env_filters, builder_gpa, filter_arena);
+                },
+                .parse => |filter_input| return try parseFilter(filter_input, parse_gpa, filter_arena),
+                .level => |level| return try Builder.singleLevel(filter_arena orelse parse_gpa, level),
+                .filter => |filter| return filter,
+            }
+        }
+
+        fn parseFilter(
+            filter_input: []const u8,
+            parse_gpa: std.mem.Allocator,
+            filter_arena: ?std.mem.Allocator,
+        ) TryInitError!Filter {
+            var builder = Builder.init(parse_gpa);
+            defer builder.deinit();
+
+            builder.tryParse(filter_input) catch |err| switch (err) {
+                error.BuilderError => {
+                    for (builder.diagnostics()) |diag| switch (diag) {
+                        .invalid_filter => |f| {
+                            std.debug.print("Warning: Invalid filter: `{s}`, ignoring it\n", .{f});
+                        },
+                    };
+                },
+                else => |e| return e,
+            };
+
+            return try if (filter_arena) |a| builder.buildWithAllocator(a) else builder.build();
+        }
     };
 
     pub const Output = union(enum) {
@@ -160,290 +173,270 @@ pub const InitOptions = struct {
         /// Write logs to a writer
         writer: std.io.AnyWriter,
     };
-
-    /// This mirrors `std.log.Level` and adds the `trace` level.
-    pub const LogLevel = enum {
-        err,
-        warn,
-        info,
-        debug,
-        trace,
-
-        pub fn more(level: *LogLevel) void {
-            LogLevel.move(level, 1);
-        }
-
-        pub fn less(level: *LogLevel) void {
-            LogLevel.move(level, -1);
-        }
-
-        pub fn move(level: *LogLevel, dir: i64) void {
-            var level_value: i64 = @as(i64, @intFromEnum(level.*));
-            level_value +|= dir;
-            level_value = std.math.clamp(level_value, 0, @as(i64, std.meta.fields(LogLevel).len - 1));
-            level.* = @enumFromInt(@as(std.meta.Tag(LogLevel), @intCast(level_value)));
-        }
-
-        pub inline fn fromStd(level: std.log.Level) LogLevel {
-            return @enumFromInt(@intFromEnum(level));
-        }
-
-        pub fn parse(str: []const u8) ?LogLevel {
-            const matches = std.ascii.eqlIgnoreCase;
-            if (matches(str, "trace")) return .trace;
-            if (matches(str, "debug")) return .debug;
-            if (matches(str, "info")) return .info;
-            if (matches(str, "warn")) return .warn;
-            if (matches(str, "warning")) return .warn;
-            if (matches(str, "err")) return .err;
-            if (matches(str, "error")) return .err;
-            return null;
-        }
-
-        fn toStd(level: LogLevel) std.log.Level {
-            return switch (level) {
-                .err => .err,
-                .warn => .warn,
-                .info => .info,
-                .debug => .debug,
-                .trace => .debug,
-            };
-        }
-
-        test more {
-            const t = std.testing;
-
-            var level: LogLevel = .err;
-            level.more();
-            try t.expectEqual(.warn, level);
-            level.more();
-            try t.expectEqual(.info, level);
-            level.more();
-            try t.expectEqual(.debug, level);
-            level.more();
-            try t.expectEqual(.trace, level);
-            level.more();
-            try t.expectEqual(.trace, level);
-        }
-
-        test less {
-            const t = std.testing;
-
-            var level: LogLevel = .trace;
-            level.less();
-            try t.expectEqual(.debug, level);
-            level.less();
-            try t.expectEqual(.info, level);
-            level.less();
-            try t.expectEqual(.warn, level);
-            level.less();
-            try t.expectEqual(.err, level);
-            level.less();
-            try t.expectEqual(.err, level);
-        }
-
-        test move {
-            const t = std.testing;
-
-            var level: LogLevel = .err;
-
-            level.move(2);
-            try t.expectEqual(.info, level);
-
-            level.move(3);
-            try t.expectEqual(.trace, level);
-
-            level.move(-1);
-            try t.expectEqual(.debug, level);
-
-            level.move(-2);
-            try t.expectEqual(.warn, level);
-
-            level.move(-3);
-            try t.expectEqual(.err, level);
-
-            level.move(std.math.minInt(i64));
-            try t.expectEqual(.err, level);
-
-            level.move(std.math.maxInt(i64));
-            try t.expectEqual(.trace, level);
-        }
-    };
 };
+
+/// Initialize the logger using the given options.
+/// This method needs to be called as early as possible, before any logging is done.
+///
+/// Panics if called more than once.
+pub fn init(opts: InitOptions) void {
+    return tryInit(opts) catch @panic("Failed to initialize logger");
+}
+
+/// Initialize the logger using the given options.
+/// This method needs to be called as early as possible, before any logging is done.
+///
+/// Returns an error if called more than once.
+pub fn tryInit(opts: InitOptions) TryInitError!void {
+    const S = struct {
+        var is_initialized: std.atomic.Value(bool) = .init(false);
+    };
+
+    if (S.is_initialized.cmpxchgStrong(false, true, .monotonic, .monotonic) != null) {
+        return error.AlreadyInitialized;
+    }
+
+    var rt: RtConfig = .{};
+
+    if (opts.filter) |init_filter| {
+        rt.filter = try filter: switch (opts.allocator) {
+            .leaky => {
+                var parse_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer parse_arena.deinit();
+
+                var filter_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                // leak the filter arena
+
+                break :filter init_filter.intoFilter(parse_arena.allocator(), filter_arena.allocator());
+            },
+            .arena => |arena| {
+                break :filter init_filter.intoFilter(arena, null);
+            },
+            .split => |split| {
+                break :filter init_filter.intoFilter(split.parse_gpa, split.filter_arena);
+            },
+        };
+    }
+
+    switch (opts.output) {
+        .stderr => {
+            const file = std.io.getStdErr();
+            rt.output_is_stderr = true;
+            rt.output = .{ .file = file };
+            if (opts.enable_color) {
+                rt.color_cfg = std.io.tty.detectConfig(file);
+            }
+        },
+        .stdout => {
+            const file = std.io.getStdOut();
+            rt.output = .{ .file = file };
+            if (opts.enable_color) {
+                rt.color_cfg = std.io.tty.detectConfig(file);
+            }
+        },
+        .file => |file| {
+            const end = try file.getEndPos();
+            try file.seekTo(end);
+
+            rt.output = .{ .file = file };
+        },
+        .writer => |writer| {
+            rt.output = .{ .writer = writer };
+        },
+    }
+
+    if (opts.force_color) {
+        rt.color_cfg = .escape_codes;
+    }
+
+    rt.render_level = opts.render_level;
+    rt.render_timestamp = opts.render_timestamp;
+    rt.render_logger = opts.render_logger;
+
+    RtConfig.instance = rt;
+}
 
 pub const TryInitError = error{
     AlreadyInitialized,
-    InvalidFilter,
-} || std.fs.File.GetSeekPosError;
+    InvalidEnvValue,
+    InvalidFilterValue,
+} || std.fs.File.GetSeekPosError || std.mem.Allocator.Error;
 
-/// Returns whether the given log level is enabled.
-pub fn level_enabled(level: InitOptions.LogLevel) bool {
-    return @intFromEnum(level) <= level_filter.load(.monotonic);
+pub fn defaultLevelEnabled(level: Filter.Level) bool {
+    return levelEnabled(.default, level);
 }
 
-/// Changes the current log level filter.
-pub fn set_log_level(level: InitOptions.LogLevel) void {
-    level_filter.store(@intFromEnum(level), .monotonic);
+pub fn levelEnabled(scope: @TypeOf(.enum_literal), level: Filter.Level) bool {
+    const target = if (scope == .default) "" else @tagName(scope);
+    return RtConfig.instance.filter.matches(target, level);
 }
 
-var is_initialized: std.atomic.Value(bool) = .init(false);
-var level_filter: std.atomic.Value(u8) = .init(@intFromEnum(std.log.Level.err));
-
-const Opts = struct {
-    color: bool = false,
-    level: bool = false,
-    timestamp: bool = false,
-    logger: bool = false,
-};
-
-var impl_opts: Opts = .{};
-var output_color: std.io.tty.Config = .no_color;
-var output: ?union(enum) { file: std.fs.File, writer: std.io.AnyWriter } = null;
-var output_is_stderr: bool = false;
-
-fn defaultLogFn(
-    comptime message_level: std.log.Level,
-    comptime scope: @TypeOf(.enum_literal),
-    comptime format: []const u8,
-    args: anytype,
-) void {
-    const level = comptime InitOptions.LogLevel.fromStd(message_level);
-    logFn(level, scope, format, args);
+pub fn deinit() void {
+    RtConfig.instance.deinit();
 }
 
-fn traceLogFn(
-    comptime message_level: std.log.Level,
-    comptime scope: @TypeOf(.enum_literal),
-    comptime format: []const u8,
-    args: anytype,
-) void {
-    if (comptime std.mem.startsWith(u8, format, "TRACE: ")) {
-        logFn(.trace, scope, format["TRACE: ".len..], args);
-    } else {
-        const level = comptime InitOptions.LogLevel.fromStd(message_level);
-        logFn(level, scope, format, args);
-    }
-}
+const RtConfig = struct {
+    filter: Filter = .default,
+    color_cfg: std.io.tty.Config = .no_color,
+    output: ?Out = null,
+    output_is_stderr: bool = false,
+    render_level: bool = false,
+    render_timestamp: bool = false,
+    render_logger: bool = false,
 
-inline fn logFn(
-    comptime message_level: InitOptions.LogLevel,
-    comptime scope: @TypeOf(.enum_literal),
-    comptime format: []const u8,
-    args: anytype,
-) void {
-    const out = output orelse return;
+    const Out = union(enum) {
+        file: std.fs.File,
+        writer: std.io.AnyWriter,
+    };
 
-    if (@intFromEnum(message_level) > level_filter.load(.monotonic)) {
-        return;
+    var instance: RtConfig = .{};
+    var max_width: std.atomic.Value(usize) = .init(0);
+
+    fn deinit(self: *RtConfig, allocator: std.mem.Allocator) void {
+        self.filter.deinit(allocator);
+        self.* = .{};
     }
 
-    const target = comptime if (scope == .default) "" else "(" ++ @tagName(scope) ++ ")";
-
-    switch (out) {
-        .file => |f| {
-            if (output_is_stderr) std.debug.lockStdErr();
-            defer if (output_is_stderr) std.debug.unlockStdErr();
-
-            const fw = f.writer();
-            var bw = std.io.bufferedWriter(fw);
-            defer bw.flush() catch {};
-
-            const writer = bw.writer();
-
-            logImpl(
-                impl_opts,
-                writer,
-                message_level,
-                target,
-                format,
-                args,
-            ) catch return;
-        },
-        .writer => |w| {
-            logImpl(
-                impl_opts,
-                w,
-                message_level,
-                target,
-                format,
-                args,
-            ) catch return;
-        },
+    fn defaultLogFn(
+        comptime message_level: std.log.Level,
+        comptime scope: @TypeOf(.enum_literal),
+        comptime format: []const u8,
+        args: anytype,
+    ) void {
+        const level = comptime Filter.Level.fromStd(message_level);
+        instance.logFn(level, scope, format, args);
     }
-}
 
-fn logImpl(
-    opts: Opts,
-    writer: anytype,
-    comptime message_level: InitOptions.LogLevel,
-    comptime target: []const u8,
-    comptime format: []const u8,
-    args: anytype,
-) !void {
-    try writer.writeAll(" ");
+    fn traceLogFn(
+        comptime message_level: std.log.Level,
+        comptime scope: @TypeOf(.enum_literal),
+        comptime format: []const u8,
+        args: anytype,
+    ) void {
+        if (comptime std.mem.startsWith(u8, format, "TRACE: ")) {
+            instance.logFn(.trace, scope, format["TRACE: ".len..], args);
+        } else {
+            const level = comptime Filter.Level.fromStd(message_level);
+            instance.logFn(level, scope, format, args);
+        }
+    }
 
-    const cfg = output_color;
+    inline fn logFn(
+        self: *const RtConfig,
+        comptime message_level: Filter.Level,
+        comptime scope: @TypeOf(.enum_literal),
+        comptime format: []const u8,
+        args: anytype,
+    ) void {
+        const out = self.output orelse return;
 
-    if (opts.timestamp) ts: {
-        const nows = std.math.lossyCast(u64, std.time.milliTimestamp());
+        const scope_name = comptime if (scope == .default) "" else @tagName(scope);
+        if (self.filter.matches(scope_name, message_level) == false) return;
 
-        const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = nows / std.time.ms_per_s };
-        const epoch_day = epoch_seconds.getEpochDay();
-        const day_seconds = epoch_seconds.getDaySeconds();
-        const year_day = epoch_day.calculateYearDay();
-        const month_day = year_day.calculateMonthDay();
+        const target = comptime if (scope == .default) "" else "(" ++ @tagName(scope) ++ ")";
 
-        var buf: [128]u8 = undefined;
-        const timestamp = std.fmt.bufPrint(
-            &buf,
-            "{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}.{d:0>3}Z",
-            .{
-                year_day.year,
-                month_day.month.numeric(),
-                month_day.day_index + 1,
-                day_seconds.getHoursIntoDay(),
-                day_seconds.getMinutesIntoHour(),
-                day_seconds.getSecondsIntoMinute(),
-                nows % std.time.ms_per_s,
+        switch (out) {
+            .file => |f| {
+                if (self.output_is_stderr) std.debug.lockStdErr();
+                defer if (self.output_is_stderr) std.debug.unlockStdErr();
+
+                const fw = f.writer();
+                var bw = std.io.bufferedWriter(fw);
+                defer bw.flush() catch {};
+
+                const writer = bw.writer();
+
+                self.logImpl(
+                    writer,
+                    message_level,
+                    target,
+                    format,
+                    args,
+                ) catch return;
             },
-        ) catch break :ts;
-
-        try writer.writeAll(timestamp);
-        try writer.writeAll(" ");
+            .writer => |w| {
+                self.logImpl(
+                    w,
+                    message_level,
+                    target,
+                    format,
+                    args,
+                ) catch return;
+            },
+        }
     }
 
-    if (opts.level) {
-        const color, const level = comptime switch (message_level) {
-            .err => .{ .red, "ERROR" },
-            .warn => .{ .yellow, "WARN " },
-            .info => .{ .green, "INFO " },
-            .debug => .{ .blue, "DEBUG" },
-            .trace => .{ .magenta, "TRACE" },
-        };
-
-        try cfg.setColor(writer, color);
-        try writer.writeAll(level);
-        try cfg.setColor(writer, .reset);
+    fn logImpl(
+        self: *const RtConfig,
+        writer: anytype,
+        comptime message_level: Filter.Level,
+        comptime target: []const u8,
+        comptime format: []const u8,
+        args: anytype,
+    ) !void {
         try writer.writeAll(" ");
+
+        const cfg = self.color_cfg;
+
+        if (self.render_timestamp) ts: {
+            const nows = std.math.lossyCast(u64, std.time.milliTimestamp());
+
+            const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = nows / std.time.ms_per_s };
+            const epoch_day = epoch_seconds.getEpochDay();
+            const day_seconds = epoch_seconds.getDaySeconds();
+            const year_day = epoch_day.calculateYearDay();
+            const month_day = year_day.calculateMonthDay();
+
+            var buf: [128]u8 = undefined;
+            const timestamp = std.fmt.bufPrint(
+                &buf,
+                "{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}.{d:0>3}Z",
+                .{
+                    year_day.year,
+                    month_day.month.numeric(),
+                    month_day.day_index + 1,
+                    day_seconds.getHoursIntoDay(),
+                    day_seconds.getMinutesIntoHour(),
+                    day_seconds.getSecondsIntoMinute(),
+                    nows % std.time.ms_per_s,
+                },
+            ) catch break :ts;
+
+            try writer.writeAll(timestamp);
+            try writer.writeAll(" ");
+        }
+
+        if (self.render_level) {
+            const color, const level = comptime switch (message_level) {
+                .err => .{ .red, "ERROR" },
+                .warn => .{ .yellow, "WARN " },
+                .info => .{ .green, "INFO " },
+                .debug => .{ .blue, "DEBUG" },
+                .trace => .{ .magenta, "TRACE" },
+            };
+
+            try cfg.setColor(writer, color);
+            try writer.writeAll(level);
+            try cfg.setColor(writer, .reset);
+            try writer.writeAll(" ");
+        }
+
+        if (self.render_logger) {
+            const width = targetWidth(target.len);
+
+            try cfg.setColor(writer, .bold);
+            try writer.print(
+                "{[target]s: >[width]}",
+                .{ .target = target, .width = width },
+            );
+            try cfg.setColor(writer, .reset);
+            try writer.writeAll(" ");
+        }
+
+        try writer.print(format ++ "\n", args);
     }
 
-    if (opts.logger) {
-        const width = targetWidth(target.len);
-
-        try cfg.setColor(writer, .bold);
-        try writer.print(
-            "{[target]s: >[width]}",
-            .{ .target = target, .width = width },
-        );
-        try cfg.setColor(writer, .reset);
-        try writer.writeAll(" ");
+    inline fn targetWidth(comptime width: usize) usize {
+        return @max(width, max_width.fetchMax(width, .monotonic));
     }
-
-    try writer.print(format ++ "\n", args);
-}
-
-var max_width: std.atomic.Value(usize) = .init(0);
-
-inline fn targetWidth(comptime width: usize) usize {
-    return @max(width, max_width.fetchMax(width, .monotonic));
-}
+};

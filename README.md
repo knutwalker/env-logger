@@ -70,7 +70,7 @@ pub const std_options = env_logger.setup(.{});
 pub fn main() !void {
     env_logger.init(.{});
 
-    if (!env_logger.level_enabled(.debug)) {
+    if (!env_logger.defaultLevelEnabled(.debug)) {
         std.debug.print("To see all log messages, run with `env ZIG_LOG=debug ...`\n", .{});
     }
 
@@ -103,7 +103,7 @@ pub const std_options = env_logger.setup(.{
 pub fn main() !void {
     env_logger.init(.{});
 
-    if (!env_logger.level_enabled(.trace)) {
+    if (!env_logger.defaultLevelEnabled(.trace)) {
         std.debug.print("To see all log messages, run with `env ZIG_LOG=trace ...`\n", .{});
     }
 
@@ -134,7 +134,7 @@ pub fn main() !void {
         .filter = .{ .env_var = "MY_LOG_ENV" },
     });
 
-    if (!env_logger.level_enabled(.debug)) {
+    if (!env_logger.defaultLevelEnabled(.debug)) {
         std.debug.print("To see all log messages, run with `env MY_LOG_ENV=debug ...`\n", .{});
     }
 
@@ -161,7 +161,7 @@ pub const std_options = env_logger.setup(.{});
 pub fn main() !void {
     env_logger.init(.{});
 
-    if (!env_logger.level_enabled(.debug)) {
+    if (!env_logger.defaultLevelEnabled(.debug)) {
         std.debug.print("To see all log messages, run with `env ZIG_LOG=debug ...`\n", .{});
     }
 
@@ -196,7 +196,7 @@ pub fn main() !void {
     std.log.debug("you don't see me", .{});
     std.log.info("but I am here", .{});
 
-    env_logger.set_log_level(.debug);
+    // env_logger.set_log_level(.debug);
 
     std.log.debug("now you see me", .{});
 }
@@ -226,7 +226,7 @@ pub const std_options = env_logger.setupWith(
 pub fn main() !void {
     env_logger.init(.{});
 
-    if (!env_logger.level_enabled(.debug)) {
+    if (!env_logger.defaultLevelEnabled(.debug)) {
         std.debug.print("To see all log messages, run with `env ZIG_LOG=debug ...`\n", .{});
     }
 
@@ -254,7 +254,7 @@ pub fn main() !void {
         .render_logger = false,
     });
 
-    if (!env_logger.level_enabled(.debug)) {
+    if (!env_logger.defaultLevelEnabled(.debug)) {
         std.debug.print("To see all log messages, run with `env ZIG_LOG=debug ...`\n", .{});
     }
 
@@ -285,7 +285,7 @@ pub fn main() !void {
         .render_timestamp = true,
     });
 
-    if (!env_logger.level_enabled(.debug)) {
+    if (!env_logger.defaultLevelEnabled(.debug)) {
         std.debug.print("To see all log messages, run with `env ZIG_LOG=debug ...`\n", .{});
     }
 
@@ -344,7 +344,7 @@ pub fn main() !void {
 
     env_logger.init(.{ .output = output });
 
-    if (!env_logger.level_enabled(.debug)) {
+    if (!env_logger.defaultLevelEnabled(.debug)) {
         std.debug.print("To see all log messages, run with `env ZIG_LOG=debug ...`\n", .{});
     }
 
@@ -380,7 +380,7 @@ pub fn main() !void {
         .force_color = true,
     });
 
-    if (!env_logger.level_enabled(.debug)) {
+    if (!env_logger.defaultLevelEnabled(.debug)) {
         std.debug.print("To see all log messages, run with `env ZIG_LOG=debug ...`\n", .{});
     }
 

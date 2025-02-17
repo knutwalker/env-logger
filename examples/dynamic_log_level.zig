@@ -13,7 +13,7 @@ pub fn main() !void {
     std.log.debug("you don't see me", .{});
     std.log.info("but I am here", .{});
 
-    env_logger.set_log_level(.debug);
+    // env_logger.set_log_level(.debug);
 
     std.log.debug("now you see me", .{});
 }

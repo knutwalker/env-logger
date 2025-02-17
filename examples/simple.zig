@@ -8,7 +8,7 @@ pub const std_options = env_logger.setup(.{});
 pub fn main() !void {
     env_logger.init(.{});
 
-    if (!env_logger.level_enabled(.debug)) {
+    if (!env_logger.defaultLevelEnabled(.debug)) {
         std.debug.print("To see all log messages, run with `env ZIG_LOG=debug ...`\n", .{});
     }
 
