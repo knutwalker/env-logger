@@ -6,7 +6,7 @@
 [ci-url]: https://github.com/knutwalker/env-logger
 [license-badge]: https://img.shields.io/badge/license-MIT-blue.svg?style=shield
 
-A pretty and simple logger for Zig, inspired by [pretty_env_logger](https://github.com/seanmonstar/pretty-env-logger).
+A pretty logger for Zig, inspired by [pretty_env_logger](https://github.com/seanmonstar/pretty-env-logger).
 
 The logger works together with the `std.log` API.
 It provides a `logFn` function that can be set to your `std.Options`.
@@ -51,7 +51,7 @@ exe.root_module.addImport("env-logger", b.dependency("env-logger", .{}).module("
 
 ## Examples
 
-### Simple example
+### Starting example
 
 Setting up the logger happens in two steps:
 
@@ -82,7 +82,7 @@ pub fn main() !void {
 
 ```
 
-![simple.png](images/simple.png)
+![starting.png](images/starting.png)
 
 ### Trace level
 

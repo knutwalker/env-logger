@@ -65,7 +65,7 @@ pub fn build(b: *std.Build) void {
     // examples {{{
     const Example = enum {
         quick,
-        simple,
+        starting,
         trace_level,
         custom_env,
         scoped_log,
@@ -126,7 +126,7 @@ pub fn build(b: *std.Build) void {
                 .module_name = "env_logger",
                 .repo = "https://github.com/knutwalker/env-logger",
                 .quick = read("examples/quick.zig"),
-                .simple = read("examples/simple.zig"),
+                .starting = read("examples/starting.zig"),
                 .trace_level = read("examples/trace_level.zig"),
                 .custom_env = read("examples/custom_env.zig"),
                 .scoped_log = read("examples/scoped_log.zig"),
