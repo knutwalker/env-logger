@@ -150,6 +150,24 @@ Alternatively, you can force the logger to use colors by setting the `force_colo
 
 ![colors.png](images/colors.png)
 
+### Configure allocators
+
+Parsing and constructing the log filter requires allocations.
+By default, the logger uses the `std.heap.page_allocator` for this.
+If you want to use a different allocator, you can set the `allocator` option to a `std.mem.Allocator`.
+
+Since the filter is supposed to be kept for the remainder
+of the program's lifetime, you can set two different allocators, one
+for all the parsing (e.g. a gpa, like the `DebugAllocator`), and another
+one for the final filter allocation (e.g. an arena allocator).
+
+```zig
+{[allocator]s}
+```
+
+![allocator.png](images/allocator.png)
+
+
 ## Contributing
 
 Contributions are welcome!

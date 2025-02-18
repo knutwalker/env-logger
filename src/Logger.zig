@@ -52,13 +52,13 @@ pub const InitOptions = struct {
 
     /// The allocator which is used for initializing the filter.
     ///
-    /// The allocator is use for reading and parsing the `filter` env var
+    /// The allocator is used for reading and parsing the `filter` env var
     /// (if set to `.env_var`), parsing the resulting filter string,
     /// and allocating the resulting filter config.
     ///
     /// Since the filter is supposed to be kept for the remainder
     /// of the program's lifetime, you can set two different allocators, one
-    /// for all the parsing (e.g. a gpa, like the DebugAllocator), ond another
+    /// for all the parsing (e.g. a gpa, like the `DebugAllocator`), and another
     /// one for the final filter allocation (e.g. an arena allocator).
     allocator: union(enum) {
         /// Creates and leakes an `ArenaAllocator(page_allocator)`.

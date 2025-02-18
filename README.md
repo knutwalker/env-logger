@@ -395,6 +395,50 @@ pub fn main() !void {
 
 ![colors.png](images/colors.png)
 
+### Configure allocators
+
+Parsing and constructing the log filter requires allocations.
+By default, the logger uses the `std.heap.page_allocator` for this.
+If you want to use a different allocator, you can set the `allocator` option to a `std.mem.Allocator`.
+
+Since the filter is supposed to be kept for the remainder
+of the program's lifetime, you can set two different allocators, one
+for all the parsing (e.g. a gpa, like the `DebugAllocator`), and another
+one for the final filter allocation (e.g. an arena allocator).
+
+```zig
+const std = @import("std");
+const env_logger = @import("env-logger");
+
+pub const std_options = env_logger.setup(.{});
+
+pub fn main() !void {
+    var gpa: std.heap.DebugAllocator(.{ .verbose_log = true }) = .init;
+    defer if (gpa.deinit() == .leak) @panic("memory leak");
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    env_logger.init(.{ .allocator = .{ .split = .{
+        .parse_gpa = gpa.allocator(),
+        .filter_arena = arena.allocator(),
+    } } });
+
+    if (!env_logger.defaultLevelEnabled(.debug)) {
+        std.debug.print("To see all log messages, run with `env ZIG_LOG=debug ...`\n", .{});
+    }
+
+    std.log.debug("debug message", .{});
+    std.log.info("info message", .{});
+    std.log.warn("warn message", .{});
+    std.log.err("error message", .{});
+}
+
+```
+
+![allocator.png](images/allocator.png)
+
+
 ## Contributing
 
 Contributions are welcome!

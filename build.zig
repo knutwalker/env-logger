@@ -75,6 +75,7 @@ pub fn build(b: *std.Build) void {
         add_timestamps,
         log_outputs,
         colors,
+        allocator,
     };
     const selected_examples = b.option([]const Example, "example", "The example to run") orelse &.{};
 
@@ -136,6 +137,7 @@ pub fn build(b: *std.Build) void {
                 .add_timestamps = read("examples/add_timestamps.zig"),
                 .log_outputs = read("examples/log_outputs.zig"),
                 .colors = read("examples/colors.zig"),
+                .allocator = read("examples/allocator.zig"),
             });
         }
     }.make;
