@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 .{
-    .name = "env-logger",
+    .name = .env_logger,
     .version = "0.0.0",
+    .minimum_zig_version = "0.14.0",
     .dependencies = .{},
     .paths = .{
         "build.zig",
@@ -13,4 +14,5 @@
         "README.md.template",
         "examples/",
     },
+    .fingerprint = 0xd6fb4e6d0a154974,
 }

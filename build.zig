@@ -1,13 +1,29 @@
 // SPDX-License-Identifier: MIT
-
 const std = @import("std");
 
+const Manifest = struct {
+    name: @Type(.enum_literal),
+    version: []const u8,
+    minimum_zig_version: []const u8,
+    dependencies: struct {},
+    paths: []const []const u8,
+    fingerprint: u64,
+};
+
+const manifest: Manifest = @import("build.zig.zon");
+
 pub fn build(b: *std.Build) void {
+    errdefer |err| switch (err) {
+        error.OutOfMemory => std.process.fatal("oom", .{}),
+    };
+
     const check_step = b.step("check", "Check if the project compiles");
     const test_step = b.step("test", "Run unit tests");
     const docs_step = b.step("docs", "Generate docs");
     const example_step = b.step("example", "Run an example");
-    var readme_step = b.step("readme", "Generate the README");
+    const readme_step = b.step("readme", "Generate the readme file");
+    const fmt_step = b.step("fmt", "Run formatting checks");
+    const clean_step = b.step("clean", "Clean up");
 
     const all_step = b.step("all", "Build everything");
     all_step.dependOn(test_step);
@@ -25,30 +41,15 @@ pub fn build(b: *std.Build) void {
     });
 
     // check {{{
-    const host_target = b.resolveTargetQuery(.{});
-    const check = b.addStaticLibrary(.{
-        .name = "env-logger-check",
-        .root_source_file = b.path("src/root.zig"),
-        .target = host_target,
-        .optimize = .Debug,
-    });
-
-    const check_tests = b.addTest(.{
-        .root_source_file = b.path("src/root.zig"),
-        .target = host_target,
-        .optimize = .Debug,
-    });
+    const check = b.addLibrary(.{ .root_module = mod, .name = "check" });
+    const check_tests = b.addTest(.{ .root_module = mod });
 
     check_step.dependOn(&check.step);
     check_step.dependOn(&check_tests.step);
     // }}}
 
     // tests {{{
-    const tests = b.addTest(.{
-        .root_source_file = b.path("src/root.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+    const tests = b.addTest(.{ .root_module = mod });
     const run_tests = b.addRunArtifact(tests);
     test_step.dependOn(&run_tests.step);
     // }}}
@@ -60,6 +61,43 @@ pub fn build(b: *std.Build) void {
         .install_subdir = "docs",
     });
     docs_step.dependOn(&install_docs.step);
+    // }}}
+
+    // readme {{{
+    const gen_readme_step = readme: {
+        const root_path = std.fs.path.relative(b.allocator, b.install_path, b.build_root.path.?) catch break :readme @as(?*std.Build.Step.Run, null);
+
+        // build vars {{{
+        const module_name = std.mem.trimLeft(u8, @tagName(manifest.name), ".");
+        const lib_name = try std.mem.replaceOwned(u8, b.allocator, module_name, "_", "-");
+
+        const build_vars = b.addOptions();
+        build_vars.addOption([]const u8, "module_name", module_name);
+        build_vars.addOption([]const u8, "lib_name", lib_name);
+        build_vars.addOption([]const u8, "repo", b.fmt("https://github.com/knutwalker/{s}", .{lib_name}));
+        // }}}
+
+        var gen_readme = b.addExecutable(.{
+            .name = "gen_readme",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("generate_readme.zig"),
+                .optimize = .Debug,
+                .target = b.resolveTargetQuery(.{}),
+            }),
+        });
+        gen_readme.root_module.addOptions("build_vars", build_vars);
+
+        const run_gen_readme = b.addRunArtifact(gen_readme);
+        run_gen_readme.addFileInput(b.path("README.md.template"));
+        const readme_file = run_gen_readme.captureStdOut();
+
+        readme_step.dependOn(&run_gen_readme.step);
+
+        const install_readme_file = b.addInstallFileWithDir(readme_file, .{ .custom = root_path }, "README.md");
+        readme_step.dependOn(&install_readme_file.step);
+
+        break :readme run_gen_readme;
+    };
     // }}}
 
     // examples {{{
@@ -92,6 +130,9 @@ pub fn build(b: *std.Build) void {
         example.root_module.addImport("env-logger", mod);
 
         all_step.dependOn(&example.step);
+        if (gen_readme_step) |readme| {
+            readme.step.dependOn(&example.step);
+        }
 
         if (std.mem.indexOfScalar(Example, selected_examples, example_tag) != null) {
             const run_example = b.addRunArtifact(example);
@@ -108,39 +149,43 @@ pub fn build(b: *std.Build) void {
     }
     // }}}
 
-    // readme {{{
-    readme_step.id = .custom;
-    readme_step.makeFn = struct {
-        fn read(comptime file: []const u8) []const u8 {
-            var content = @as([]const u8, @embedFile(file));
-            if (std.mem.startsWith(u8, content, "// SPDX-License-Identifier")) {
-                const line_end = std.mem.indexOfScalar(u8, content, '\n').?;
-                content = content[line_end + 2 ..];
-            }
-            return content;
-        }
+    // fmt {{{
+    const fmt = b.addFmt(.{
+        .paths = &.{ "src", "build.zig", "build.zig.zon" },
+        .check = true,
+    });
+    fmt_step.dependOn(&fmt.step);
+    // }}}
 
-        fn make(_: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
-            var readme_file = try std.fs.cwd().createFile("README.md", .{});
-            try readme_file.writer().print(@embedFile("README.md.template"), .{
-                .name = "env-logger",
-                .module_name = "env_logger",
-                .repo = "https://github.com/knutwalker/env-logger",
-                .quick = read("examples/quick.zig"),
-                .starting = read("examples/starting.zig"),
-                .trace_level = read("examples/trace_level.zig"),
-                .custom_env = read("examples/custom_env.zig"),
-                .scoped_log = read("examples/scoped_log.zig"),
-                .dynamic_log_level = read("examples/dynamic_log_level.zig"),
-                .custom_std_options = read("examples/custom_std_options.zig"),
-                .only_messages = read("examples/only_messages.zig"),
-                .add_timestamps = read("examples/add_timestamps.zig"),
-                .log_outputs = read("examples/log_outputs.zig"),
-                .colors = read("examples/colors.zig"),
-                .allocator = read("examples/allocator.zig"),
-            });
-        }
-    }.make;
-    readme_step.dependOn(example_step);
+    // clean {{{
+    const install_path = std.Build.LazyPath{ .cwd_relative = b.getInstallPath(.prefix, "") };
+    clean_step.dependOn(&b.addRemoveDirTree(install_path).step);
+    if (@import("builtin").os.tag != .windows) {
+        clean_step.dependOn(&b.addRemoveDirTree(b.path(".zig-cache")).step);
+    }
     // }}}
 }
+
+// zig version check {{{
+comptime {
+    const required_zig = manifest.minimum_zig_version;
+    const min_zig = std.SemanticVersion.parse(required_zig) catch unreachable;
+    const current_zig = @import("builtin").zig_version;
+    if (current_zig.order(min_zig) == .lt) {
+        const error_message =
+            \\Your zig version is too old :/
+            \\
+            \\{[name]} requires zig {[zig]s}
+            \\Please download a suitable version from
+            \\
+            \\https://ziglang.org/download/
+            \\
+        ;
+
+        @compileError(std.fmt.comptimePrint(error_message, .{
+            .name = manifest.name,
+            .zig = required_zig,
+        }));
+    }
+}
+// }}}
