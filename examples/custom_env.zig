@@ -7,7 +7,7 @@ pub const std_options = env_logger.setup(.{});
 
 pub fn main() !void {
     env_logger.init(.{
-        .filter = .{ .env_var = "MY_LOG_ENV" },
+        .filter = .{ .env = .{ .name = "MY_LOG_ENV" } },
     });
 
     if (!env_logger.defaultLevelEnabled(.debug)) {

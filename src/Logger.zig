@@ -48,7 +48,7 @@ pub fn setupFn(opts: SetupOptions) fn (
 pub const InitOptions = struct {
     /// How to configure the initial log level.
     /// Set to `null` to keep the default (only errors are logged).
-    filter: ?FilterOpts = .{ .env_var = "ZIG_LOG" },
+    filter: ?FilterOpts = .{ .env = .{} },
 
     /// The allocator which is used for initializing the filter.
     ///
@@ -95,7 +95,7 @@ pub const InitOptions = struct {
 
     pub const FilterOpts = union(enum) {
         /// The env variable to check for logging configuration.
-        env_var: []const u8,
+        env: EnvVarOpts,
 
         /// A filter config that will be parsed.
         parse: []const u8,
@@ -106,32 +106,49 @@ pub const InitOptions = struct {
         /// A list of filter directives. Should be created with `Builder`.
         filter: Filter,
 
+        pub const EnvVarOpts = struct {
+            /// The name of the env variable to check and parse.
+            name: []const u8 = "ZIG_LOG",
+            /// If the env variable is missing, use this value as default fallback.
+            /// When this is set to null, use the global default, which only logs
+            /// errors.
+            fallback: ?Filter.Level = null,
+        };
+
         fn intoFilter(
             self: FilterOpts,
             parse_gpa: std.mem.Allocator,
             filter_arena: ?std.mem.Allocator,
         ) TryInitError!Filter {
-            switch (self) {
-                .env_var => |env_var| {
-                    // we can delay hitting the gpa for parsing the env var as it is likely smaller
-                    var fba = std.heap.stackFallback(4096, parse_gpa);
-                    const stack_gpa = fba.get();
+            // we can delay hitting the gpa for parsing the env var as it is likely smaller
+            var fba = std.heap.stackFallback(4096, parse_gpa);
+            const stack_gpa = fba.get();
 
-                    const env_filters = std.process.getEnvVarOwned(stack_gpa, env_var) catch |err| switch (err) {
-                        error.EnvironmentVariableNotFound => return .default,
+            // drop all at the end
+            // maybe this is all overkill, dunno
+            var arena_impl: std.heap.ArenaAllocator = .init(stack_gpa);
+            defer arena_impl.deinit();
+
+            const arena = arena_impl.allocator();
+
+            sw: switch (self) {
+                .env => |env| {
+                    const env_filters = std.process.getEnvVarOwned(arena, env.name) catch |err| switch (err) {
+                        error.EnvironmentVariableNotFound => {
+                            if (env.fallback) |fallback| {
+                                continue :sw .{ .level = fallback };
+                            } else {
+                                return .default;
+                            }
+                        },
                         error.InvalidWtf8 => return TryInitError.InvalidEnvValue,
                         else => |e| return e,
                     };
-                    defer stack_gpa.free(env_filters);
+                    continue :sw .{ .parse = env_filters };
 
-                    // if we have a separate filter_arena, we can use the stack fallback for the builder
-                    // to further avoid hitting the actual allocator.
-                    const builder_gpa = if (filter_arena == null) parse_gpa else stack_gpa;
-
-                    return try parseFilter(env_filters, builder_gpa, filter_arena);
                 },
-                .parse => |filter_input| return try parseFilter(filter_input, parse_gpa, filter_arena),
-                .level => |level| return try Builder.singleLevel(filter_arena orelse parse_gpa, level),
+                .parse => |filter_input| return try parseFilter(filter_input, arena, filter_arena),
+                .level => |level| return try Builder.singleLevel(filter_arena orelse arena, level),
                 .filter => |filter| return filter,
             }
         }
