@@ -145,7 +145,6 @@ pub const InitOptions = struct {
                         else => |e| return e,
                     };
                     continue :sw .{ .parse = env_filters };
-
                 },
                 .parse => |filter_input| return try parseFilter(filter_input, arena, filter_arena),
                 .level => |level| return try Builder.singleLevel(filter_arena orelse arena, level),
