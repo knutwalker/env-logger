@@ -206,8 +206,15 @@ fn buildAny(self: *Builder, arena: ?mem.Allocator) mem.Allocator.Error!Filter {
     }
 
     const filters = if (arena) |a| blk: {
-        const fs = try a.dupe(ScopeLevel, self.filters.items);
-        self.filters.clearAndFree(self.gpa);
+        defer self.filters.deinit(self.gpa);
+
+        const fs = try a.alloc(ScopeLevel, self.filters.items.len);
+        for (self.filters.items, fs) |filter, *duped| {
+            duped.* = .{
+                .scope = try a.dupe(u8, filter.scope),
+                .level = filter.level,
+            };
+        }
         break :blk fs;
     } else try self.filters.toOwnedSlice(self.gpa);
 
