@@ -115,63 +115,53 @@ pub const InitOptions = struct {
             fallback: ?Filter.Level = null,
         };
 
+        pub fn parseEnv(
+            opts: EnvVarOpts,
+            gpa: std.mem.Allocator,
+            filter_arena: ?std.mem.Allocator,
+        ) TryInitError!Filter {
+            var builder = Builder.init(gpa);
+            defer builder.deinit();
+
+            if (!try builder.parseEnvLogErrors(opts.name)) {
+                if (opts.fallback) |fallback| {
+                    try builder.addLevel(fallback);
+                } else {
+                    try builder.addScopeLevel(Filter.default_filter);
+                }
+            }
+
+            return try if (filter_arena) |a| builder.buildWithAllocator(a) else builder.build();
+        }
+
+        pub fn parseConfig(
+            config: []const u8,
+            gpa: std.mem.Allocator,
+            filter_arena: ?std.mem.Allocator,
+        ) TryInitError!Filter {
+            var builder = Builder.init(gpa);
+            defer builder.deinit();
+
+            try builder.parseLogErrors(config);
+
+            return try if (filter_arena) |a| builder.buildWithAllocator(a) else builder.build();
+        }
+
+        pub fn wrapLevel(level: Filter.Level, arena: std.mem.Allocator) TryInitError!Filter {
+            return try Builder.singleLevel(arena, level);
+        }
+
         fn intoFilter(
             self: FilterOpts,
             parse_gpa: std.mem.Allocator,
             filter_arena: ?std.mem.Allocator,
         ) TryInitError!Filter {
-            // we can delay hitting the gpa for parsing the env var as it is likely smaller
-            var fba = std.heap.stackFallback(4096, parse_gpa);
-            const stack_gpa = fba.get();
-
-            // drop all at the end
-            // maybe this is all overkill, dunno
-            var arena_impl: std.heap.ArenaAllocator = .init(stack_gpa);
-            defer arena_impl.deinit();
-
-            const arena = arena_impl.allocator();
-
-            sw: switch (self) {
-                .env => |env| {
-                    const env_filters = std.process.getEnvVarOwned(arena, env.name) catch |err| switch (err) {
-                        error.EnvironmentVariableNotFound => {
-                            if (env.fallback) |fallback| {
-                                continue :sw .{ .level = fallback };
-                            } else {
-                                return .default;
-                            }
-                        },
-                        error.InvalidWtf8 => return TryInitError.InvalidEnvValue,
-                        else => |e| return e,
-                    };
-                    continue :sw .{ .parse = env_filters };
-                },
-                .parse => |filter_input| return try parseFilter(filter_input, arena, filter_arena),
-                .level => |level| return try Builder.singleLevel(filter_arena orelse arena, level),
+            switch (self) {
+                .env => |env| return parseEnv(env, parse_gpa, filter_arena),
+                .parse => |spec| return parseConfig(spec, parse_gpa, filter_arena),
+                .level => |level| return try wrapLevel(level, filter_arena orelse parse_gpa),
                 .filter => |filter| return filter,
             }
-        }
-
-        fn parseFilter(
-            filter_input: []const u8,
-            parse_gpa: std.mem.Allocator,
-            filter_arena: ?std.mem.Allocator,
-        ) TryInitError!Filter {
-            var builder = Builder.init(parse_gpa);
-            defer builder.deinit();
-
-            builder.tryParse(filter_input) catch |err| switch (err) {
-                error.BuilderError => {
-                    for (builder.diagnostics()) |diag| switch (diag) {
-                        .invalid_filter => |f| {
-                            std.debug.print("Warning: Invalid filter: `{s}`, ignoring it\n", .{f});
-                        },
-                    };
-                },
-                else => |e| return e,
-            };
-
-            return try if (filter_arena) |a| builder.buildWithAllocator(a) else builder.build();
         }
     };
 

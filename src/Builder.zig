@@ -1,5 +1,5 @@
 //! A builder to crate a list of scope filters.
-//! The input can be added programatically or a string is parsed.
+//! The input can be added programmatically or a string is parsed.
 //! The string format is a comma-separated list of `scope=level` pairs:
 //!
 //!     scope_a=info,scope_b=debug
@@ -115,6 +115,51 @@ pub fn tryParse(self: *Builder, spec: []const u8) (error{BuilderError} || mem.Al
     if (self.diags.items.len > 0) return error.BuilderError;
 }
 
+pub fn parseLogErrors(self: *Builder, spec: []const u8) mem.Allocator.Error!void {
+    self.tryParse(spec) catch |err| switch (err) {
+        error.BuilderError => self.logDiagnostics(),
+        else => |e| return e,
+    };
+}
+
+pub fn parseEnv(self: *Builder, env_var: []const u8) (mem.Allocator.Error)!bool {
+    const spec = std.process.getEnvVarOwned(self.gpa, env_var) catch |err| switch (err) {
+        error.EnvironmentVariableNotFound => return false,
+        error.InvalidWtf8 => {
+            try self.invalidFilter(env_var);
+            return false;
+        },
+        else => |e| return e,
+    };
+    defer self.gpa.free(spec);
+    try self.parse(spec);
+    return true;
+}
+
+pub fn tryParseEnv(self: *Builder, env_var: []const u8) (error{BuilderError} || mem.Allocator.Error)!bool {
+    const ret = try self.parseEnv(env_var);
+    if (self.diags.items.len > 0) return error.BuilderError;
+    return ret;
+}
+
+pub fn parseEnvLogErrors(self: *Builder, env_var: []const u8) mem.Allocator.Error!bool {
+    return self.tryParseEnv(env_var) catch |err| switch (err) {
+        error.BuilderError => {
+            self.logDiagnostics();
+            return false;
+        },
+        else => |e| return e,
+    };
+}
+
+pub fn logDiagnostics(self: *const Builder) void {
+    for (self.diagnostics()) |diag| switch (diag) {
+        .invalid_filter => |f| {
+            std.debug.print("Warning: Invalid filter: `{s}`, ignoring it\n", .{f});
+        },
+    };
+}
+
 pub fn addFilter(self: *Builder, scope: ?[]const u8, level: Level) mem.Allocator.Error!void {
     const search_scope = scope orelse "";
 
@@ -130,6 +175,14 @@ pub fn addFilter(self: *Builder, scope: ?[]const u8, level: Level) mem.Allocator
             .level = level,
         });
     }
+}
+
+pub fn addLevel(self: *Builder, level: Level) mem.Allocator.Error!void {
+    try self.addFilter(null, level);
+}
+
+pub fn addScopeLevel(self: *Builder, scope: ScopeLevel) mem.Allocator.Error!void {
+    try self.addFilter(scope.scope, scope.level);
 }
 
 pub fn diagnostics(self: *const Builder) []const Diagnostic {
