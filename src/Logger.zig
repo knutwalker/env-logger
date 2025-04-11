@@ -127,7 +127,7 @@ pub const InitOptions = struct {
                 if (opts.fallback) |fallback| {
                     try builder.addLevel(fallback);
                 } else {
-                    try builder.addScopeLevel(Filter.default_filter);
+                    try builder.addScopeLevel(.default);
                 }
             }
 

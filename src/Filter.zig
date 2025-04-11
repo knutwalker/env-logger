@@ -10,13 +10,13 @@ const Filter = @This();
 filters: []const ScopeLevel,
 
 /// The default filter only allows all error log messages.
-pub const default: Filter = .{ .filters = &[_]ScopeLevel{default_filter} };
-
-pub const default_filter: ScopeLevel = .{ .scope = "", .level = .err };
+pub const default: Filter = .{ .filters = &[_]ScopeLevel{.default} };
 
 pub const ScopeLevel = struct {
     scope: []const u8,
     level: Level,
+
+    pub const default: ScopeLevel = .{ .scope = "", .level = .err };
 };
 
 /// This mirrors `std.log.Level` and adds the `trace` level.
