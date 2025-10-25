@@ -430,13 +430,15 @@ const RtConfig = struct {
         if (self.render_logger) {
             const width = targetWidth(target.len);
 
-            try cfg.setColor(writer, .bold);
-            try writer.print(
-                "{[target]s: >[width]}",
-                .{ .target = target, .width = width },
-            );
-            try cfg.setColor(writer, .reset);
-            try writer.writeAll(" ");
+            if (width > 0) {
+                try cfg.setColor(writer, .bold);
+                try writer.print(
+                    "{[target]s: >[width]}",
+                    .{ .target = target, .width = width },
+                );
+                try cfg.setColor(writer, .reset);
+                try writer.writeAll(" ");
+            }
         }
 
         try writer.print(format ++ "\n", args);
