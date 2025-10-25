@@ -380,8 +380,6 @@ const RtConfig = struct {
         comptime format: []const u8,
         args: anytype,
     ) !void {
-        try writer.writeAll(" ");
-
         const cfg = self.color_cfg;
 
         if (self.render_timestamp) ts: {
