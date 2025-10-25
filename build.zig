@@ -114,10 +114,14 @@ pub fn build(b: *std.Build) void {
         log_outputs,
         colors,
         allocator,
+
+        all,
     };
     const selected_examples = b.option([]const Example, "example", "The example to run") orelse &.{};
 
     for (std.enums.values(Example)) |example_tag| {
+        if (example_tag == .all) continue;
+
         const example_name = @tagName(example_tag);
         const example_path = b.fmt("examples/{s}.zig", .{example_name});
         const example = b.addExecutable(.{
@@ -136,7 +140,7 @@ pub fn build(b: *std.Build) void {
             readme.step.dependOn(&example.step);
         }
 
-        if (std.mem.indexOfScalar(Example, selected_examples, example_tag) != null) {
+        if (std.mem.indexOfAny(Example, selected_examples, &.{ example_tag, .all }) != null) {
             const run_example = b.addRunArtifact(example);
             switch (example_tag) {
                 .log_outputs => {
