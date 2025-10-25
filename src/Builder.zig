@@ -191,35 +191,46 @@ pub fn diagnostics(self: *const Builder) []const Diagnostic {
     return self.diags.items;
 }
 
+/// Allocates the returned slice with this builders allocator.
 pub fn build(self: *Builder) mem.Allocator.Error!Filter {
-    return self.buildAny(null);
+    if (self.filters.items.len == 0) return .default;
+    const filters = try self.buildFilters();
+    return intoFilter(filters);
 }
 
-/// Allocates the returned slice either with `opts.arena` or this builders allocator.
+/// Allocates the returned slice with the provided arena.
 /// The filter is likely gonna be kept alive for the remainder of the program lifetime,
 /// using an arena allocator is recommended to leak that memory.
 pub fn buildWithAllocator(self: *Builder, arena: mem.Allocator) mem.Allocator.Error!Filter {
-    return self.buildAny(arena);
+    if (self.filters.items.len == 0) return .default;
+    const filters = try self.buildFiltersAlloc(arena);
+    return intoFilter(filters);
 }
 
-fn buildAny(self: *Builder, arena: ?mem.Allocator) mem.Allocator.Error!Filter {
-    if (self.filters.items.len == 0) {
-        return .default;
+fn buildFilters(self: *Builder) mem.Allocator.Error![]ScopeLevel {
+    return try self.filters.toOwnedSlice(self.gpa);
+}
+
+fn buildFiltersAlloc(self: *Builder, arena: mem.Allocator) mem.Allocator.Error![]ScopeLevel {
+    var fs: ArrayList(ScopeLevel) = try .initCapacity(arena, self.filters.items.len);
+    errdefer {
+        for (fs.items) |filter| arena.free(filter.scope);
+        fs.deinit(arena);
     }
 
-    const filters = if (arena) |a| blk: {
-        defer self.filters.deinit(self.gpa);
+    for (self.filters.items) |filter| {
+        const scope = try arena.dupe(u8, filter.scope);
+        fs.appendAssumeCapacity(.{
+            .scope = scope,
+            .level = filter.level,
+        });
+    }
 
-        const fs = try a.alloc(ScopeLevel, self.filters.items.len);
-        for (self.filters.items, fs) |filter, *duped| {
-            duped.* = .{
-                .scope = try a.dupe(u8, filter.scope),
-                .level = filter.level,
-            };
-        }
-        break :blk fs;
-    } else try self.filters.toOwnedSlice(self.gpa);
+    self.filters.clearAndFree(self.gpa);
+    return fs.items;
+}
 
+fn intoFilter(filters: []ScopeLevel) Filter {
     std.mem.sort(ScopeLevel, filters, {}, struct {
         fn lt(_: void, lhs: ScopeLevel, rhs: ScopeLevel) bool {
             return lhs.scope.len > rhs.scope.len;
