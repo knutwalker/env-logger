@@ -122,10 +122,12 @@ pub fn build(b: *std.Build) void {
         const example_path = b.fmt("examples/{s}.zig", .{example_name});
         const example = b.addExecutable(.{
             .name = example_name,
-            .root_source_file = b.path(example_path),
-            .target = target,
-            .optimize = optimize,
-            .single_threaded = true,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path(example_path),
+                .target = target,
+                .optimize = optimize,
+                .single_threaded = true,
+            }),
         });
         example.root_module.addImport("env-logger", mod);
 

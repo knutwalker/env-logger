@@ -55,11 +55,13 @@ const Filter = @import("Filter.zig");
 const ScopeLevel = Filter.ScopeLevel;
 const Level = Filter.Level;
 
+const ArrayList = std.ArrayListUnmanaged;
+
 const Builder = @This();
 
 gpa: mem.Allocator,
-filters: std.ArrayListUnmanaged(ScopeLevel) = .empty,
-diags: std.ArrayListUnmanaged(Diagnostic) = .empty,
+filters: ArrayList(ScopeLevel) = .empty,
+diags: ArrayList(Diagnostic) = .empty,
 
 pub fn init(gpa: mem.Allocator) Builder {
     return .{ .gpa = gpa };

@@ -325,14 +325,14 @@ pub fn main() !void {
     };
 
     var output: env_logger.InitOptions.Output = .stderr;
-    var buf: ?std.ArrayList(u8) = null;
-    defer if (buf) |b| b.deinit();
+    var buf: ?std.ArrayListUnmanaged(u8) = null;
+    defer if (buf) |*b| b.deinit(allocator);
 
     if (std.mem.eql(u8, output_filename, "-")) {
         output = .stdout;
     } else if (std.mem.eql(u8, output_filename, "+")) {
-        buf = .init(allocator);
-        output = .{ .writer = buf.?.writer().any() };
+        buf = .empty;
+        output = .{ .writer = buf.?.writer(allocator).any() };
     } else {
         const output_file = try std.fs.cwd().createFile(
             output_filename,
