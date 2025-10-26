@@ -277,6 +277,9 @@ const RtConfig = struct {
             .borrowed => |alloc| self.filter.deinit(alloc),
             .owned => |*arena| self.filter.deinit(arena.allocator()),
         }
+        if (self.output == .file) {
+            self.output.file.close();
+        }
         self.* = .{};
     }
 
