@@ -34,7 +34,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const mod = b.addModule("env-logger", .{
+    const mod = b.addModule("env_logger", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -133,7 +133,7 @@ pub fn build(b: *std.Build) void {
                 .single_threaded = true,
             }),
         });
-        example.root_module.addImport("env-logger", mod);
+        example.root_module.addImport("env_logger", mod);
 
         all_step.dependOn(&example.step);
         if (gen_readme_step) |readme| {

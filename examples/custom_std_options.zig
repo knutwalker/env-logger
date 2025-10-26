@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 const std = @import("std");
-const env_logger = @import("env-logger");
+const env_logger = @import("env_logger");
 
 pub const std_options = env_logger.setupWith(
     .{},
