@@ -403,7 +403,7 @@ const RtConfig = struct {
     ) !void {
         const cfg = self.color_cfg;
 
-        if (self.render_timestamp) ts: {
+        if (self.render_timestamp) {
             const nows = std.math.lossyCast(u64, std.time.milliTimestamp());
 
             const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = nows / std.time.ms_per_s };
@@ -412,10 +412,8 @@ const RtConfig = struct {
             const year_day = epoch_day.calculateYearDay();
             const month_day = year_day.calculateMonthDay();
 
-            var buf: [128]u8 = undefined;
-            const timestamp = std.fmt.bufPrint(
-                &buf,
-                "{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}.{d:0>3}Z",
+            try writer.print(
+                "{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}.{d:0>3}Z ",
                 .{
                     year_day.year,
                     month_day.month.numeric(),
@@ -425,10 +423,7 @@ const RtConfig = struct {
                     day_seconds.getSecondsIntoMinute(),
                     nows % std.time.ms_per_s,
                 },
-            ) catch break :ts;
-
-            try writer.writeAll(timestamp);
-            try writer.writeAll(" ");
+            );
         }
 
         if (self.render_level) {
