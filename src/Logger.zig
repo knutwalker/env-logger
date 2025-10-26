@@ -205,23 +205,7 @@ pub fn tryInit(opts: InitOptions) TryInitError!void {
     var rt: RtConfig = .{};
 
     if (opts.filter) |init_filter| {
-        rt.filter = try filter: switch (opts.allocator) {
-            .leaky => {
-                var parse_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-                defer parse_arena.deinit();
-
-                var filter_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-                // leak the filter arena
-
-                break :filter init_filter.intoFilter(parse_arena.allocator(), filter_arena.allocator());
-            },
-            .arena => |arena| {
-                break :filter init_filter.intoFilter(arena, null);
-            },
-            .split => |split| {
-                break :filter init_filter.intoFilter(split.parse_gpa, split.filter_arena);
-            },
-        };
+        try rt.initFilter(init_filter, opts.allocator);
     }
 
     switch (opts.output) {
@@ -282,6 +266,7 @@ pub fn deinit() void {
 }
 
 const RtConfig = struct {
+    allocator: Alloc = .none,
     filter: Filter = .default,
     color_cfg: std.io.tty.Config = .no_color,
     output: ?Out = null,
@@ -295,11 +280,21 @@ const RtConfig = struct {
         writer: std.io.AnyWriter,
     };
 
+    const Alloc = union(enum) {
+        none,
+        borrowed: std.mem.Allocator,
+        owned: std.heap.ArenaAllocator,
+    };
+
     var instance: RtConfig = .{};
     var max_width: std.atomic.Value(usize) = .init(0);
 
-    fn deinit(self: *RtConfig, allocator: std.mem.Allocator) void {
-        self.filter.deinit(allocator);
+    fn deinit(self: *RtConfig) void {
+        switch (self.allocator) {
+            .none => {},
+            .borrowed => |alloc| self.filter.deinit(alloc),
+            .owned => |*arena| self.filter.deinit(arena.allocator()),
+        }
         self.* = .{};
     }
 
@@ -324,6 +319,32 @@ const RtConfig = struct {
         } else {
             const level = comptime Filter.Level.fromStd(message_level);
             instance.logFn(level, scope, format, args);
+        }
+    }
+
+    fn initFilter(
+        self: *RtConfig,
+        init_filter: InitOptions.FilterOpts,
+        allocator: @FieldType(InitOptions, "allocator"),
+    ) !void {
+        switch (allocator) {
+            .leaky => {
+                var parse_gpa: std.heap.DebugAllocator(.{}) = .init;
+                defer _ = parse_gpa.deinit();
+
+                var filter_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                self.allocator = .{ .owned = filter_arena };
+
+                self.filter = try init_filter.intoFilter(parse_gpa.allocator(), filter_arena.allocator());
+            },
+            .arena => |arena| {
+                self.allocator = .{ .borrowed = arena };
+                self.filter = try init_filter.intoFilter(arena, null);
+            },
+            .split => |split| {
+                self.allocator = .{ .borrowed = split.filter_arena };
+                self.filter = try init_filter.intoFilter(split.parse_gpa, split.filter_arena);
+            },
         }
     }
 
