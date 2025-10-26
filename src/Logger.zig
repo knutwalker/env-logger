@@ -208,32 +208,12 @@ pub fn tryInit(opts: InitOptions) TryInitError!void {
         try rt.initFilter(init_filter, opts.allocator);
     }
 
-    switch (opts.output) {
-        .stderr => {
-            const file = std.io.getStdErr();
-            rt.output_is_stderr = true;
-            rt.output = .{ .file = file };
-            if (opts.enable_color) {
-                rt.color_cfg = std.io.tty.detectConfig(file);
-            }
-        },
-        .stdout => {
-            const file = std.io.getStdOut();
-            rt.output = .{ .file = file };
-            if (opts.enable_color) {
-                rt.color_cfg = std.io.tty.detectConfig(file);
-            }
-        },
-        .file => |file| {
-            const end = try file.getEndPos();
-            try file.seekTo(end);
-
-            rt.output = .{ .file = file };
-        },
-        .writer => |writer| {
-            rt.output = .{ .writer = writer };
-        },
-    }
+    try switch (opts.output) {
+        .stderr => rt.for_stderr(opts.enable_color),
+        .stdout => rt.for_stdout(opts.enable_color),
+        .file => |file| rt.for_file(file),
+        .writer => |writer| rt.for_writer(writer),
+    };
 
     if (opts.force_color) {
         rt.color_cfg = .escape_codes;
@@ -269,13 +249,15 @@ const RtConfig = struct {
     allocator: Alloc = .none,
     filter: Filter = .default,
     color_cfg: std.io.tty.Config = .no_color,
-    output: ?Out = null,
-    output_is_stderr: bool = false,
+    output: Out = .noop,
     render_level: bool = false,
     render_timestamp: bool = false,
     render_logger: bool = false,
 
     const Out = union(enum) {
+        noop,
+        stderr: std.fs.File,
+        stdout: std.fs.File,
         file: std.fs.File,
         writer: std.io.AnyWriter,
     };
@@ -348,49 +330,64 @@ const RtConfig = struct {
         }
     }
 
+    fn for_stderr(self: *RtConfig, enable_color: bool) !void {
+        const file = std.io.getStdErr();
+        self.output = .{ .stderr = file };
+        if (enable_color) {
+            self.color_cfg = std.io.tty.detectConfig(file);
+        }
+    }
+
+    fn for_stdout(self: *RtConfig, enable_color: bool) !void {
+        const file = std.io.getStdOut();
+        self.output = .{ .stdout = file };
+        if (enable_color) {
+            self.color_cfg = std.io.tty.detectConfig(file);
+        }
+    }
+
+    fn for_file(self: *RtConfig, file: std.fs.File) !void {
+        const end = try file.getEndPos();
+        try file.seekTo(end);
+        self.output = .{ .file = file };
+    }
+
+    fn for_writer(self: *RtConfig, writer: std.io.AnyWriter) void {
+        self.output = .{ .writer = writer };
+    }
+
     inline fn logFn(
-        self: *const RtConfig,
+        self: *RtConfig,
         comptime message_level: Filter.Level,
         comptime scope: @TypeOf(.enum_literal),
         comptime format: []const u8,
         args: anytype,
     ) void {
-        const out = self.output orelse return;
-
         const scope_name = comptime if (scope == .default) "" else @tagName(scope);
         if (self.filter.matches(scope_name, message_level) == false) return;
 
+        var bo: ?std.io.BufferedWriter(4096, std.fs.File.Writer) = null;
+        if (self.output == .stderr) std.debug.lockStdErr();
+        const writer = writer: switch (self.output) {
+            .noop => return,
+            .stderr, .stdout, .file => |*file| {
+                bo = std.io.bufferedWriter(file.writer());
+                break :writer bo.?.writer().any();
+            },
+            .writer => |w| w,
+        };
+        defer if (self.output == .stderr) std.debug.unlockStdErr();
+        defer if (bo) |*b| b.flush() catch {};
+
         const target = comptime if (scope == .default) "" else "(" ++ @tagName(scope) ++ ")";
 
-        switch (out) {
-            .file => |f| {
-                if (self.output_is_stderr) std.debug.lockStdErr();
-                defer if (self.output_is_stderr) std.debug.unlockStdErr();
-
-                const fw = f.writer();
-                var bw = std.io.bufferedWriter(fw);
-                defer bw.flush() catch {};
-
-                const writer = bw.writer();
-
-                self.logImpl(
-                    writer,
-                    message_level,
-                    target,
-                    format,
-                    args,
-                ) catch return;
-            },
-            .writer => |w| {
-                self.logImpl(
-                    w,
-                    message_level,
-                    target,
-                    format,
-                    args,
-                ) catch return;
-            },
-        }
+        self.logImpl(
+            writer,
+            message_level,
+            target,
+            format,
+            args,
+        ) catch return;
     }
 
     fn logImpl(
