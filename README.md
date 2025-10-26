@@ -47,7 +47,7 @@ exe.root_module.addImport("env-logger", b.dependency("env-logger", .{}).module("
 ```
 
 > [!IMPORTANT]
-> `env-logger` tracks Zig `0.14.0`
+> `env-logger` tracks Zig `0.15.0`
 
 ## Examples
 

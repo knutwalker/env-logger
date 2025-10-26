@@ -34,7 +34,7 @@ exe.root_module.addImport("{[name]s}", b.dependency("{[name]s}", .{{}}).module("
 ```
 
 > [!IMPORTANT]
-> `{[name]s}` tracks Zig `0.14.0`
+> `{[name]s}` tracks Zig `0.15.0`
 
 ## Examples
 
