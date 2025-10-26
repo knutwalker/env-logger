@@ -343,6 +343,8 @@ pub fn main() !void {
     }
 
     env_logger.init(.{ .output = output });
+    // deinit will close any eventual file handles
+    defer env_logger.deinit();
 
     if (!env_logger.defaultLevelEnabled(.debug)) {
         std.debug.print("To see all log messages, run with `env ZIG_LOG=debug ...`\n", .{});

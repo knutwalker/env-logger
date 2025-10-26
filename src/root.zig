@@ -15,6 +15,7 @@ pub const setupFn = Logger.setupFn;
 pub const InitOptions = Logger.InitOptions;
 pub const init = Logger.init;
 pub const tryInit = Logger.tryInit;
+pub const deinit = Logger.deinit;
 
 test "force analysis" {
     comptime {
