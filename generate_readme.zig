@@ -2,8 +2,10 @@ const std = @import("std");
 const build_vars = @import("build_vars");
 
 pub fn main() !void {
-    var bufout = std.io.bufferedWriter(std.io.getStdOut().writer());
-    var bo = bufout.writer();
+    var stdout_buf: [4096]u8 = undefined;
+    var stdout = std.fs.File.stdout();
+    var stdout_writer = stdout.writer(&stdout_buf);
+    const bo = &stdout_writer.interface;
 
     const readme_tpl = @embedFile("README.md.template");
 
@@ -25,7 +27,7 @@ pub fn main() !void {
         .allocator = read("examples/allocator.zig"),
     });
 
-    try bufout.flush();
+    try bo.flush();
 }
 
 fn read(comptime file: []const u8) []const u8 {

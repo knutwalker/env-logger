@@ -21,14 +21,14 @@ pub fn main() !void {
     };
 
     var output: env_logger.InitOptions.Output = .stderr;
-    var buf: ?std.ArrayListUnmanaged(u8) = null;
-    defer if (buf) |*b| b.deinit(allocator);
+    var buf: ?std.io.Writer.Allocating = null;
+    defer if (buf) |*b| b.deinit();
 
     if (std.mem.eql(u8, output_filename, "-")) {
         output = .stdout;
     } else if (std.mem.eql(u8, output_filename, "+")) {
-        buf = .empty;
-        output = .{ .writer = buf.?.writer(allocator).any() };
+        buf = .init(allocator);
+        output = .{ .writer = &buf.?.writer };
     } else {
         const output_file = try std.fs.cwd().createFile(
             output_filename,
@@ -51,7 +51,7 @@ pub fn main() !void {
     std.log.warn("warn message", .{});
     std.log.err("error message", .{});
 
-    if (buf) |b| {
-        std.debug.print("Contents of buffer:\n{s}\n", .{b.items});
+    if (buf) |*b| {
+        std.debug.print("Contents of buffer:\n{s}\n", .{b.written()});
     }
 }

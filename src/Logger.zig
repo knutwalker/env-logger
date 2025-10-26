@@ -166,18 +166,28 @@ pub const InitOptions = struct {
     };
 
     pub const Output = union(enum) {
-        /// Write logs to stderr
+        /// Write logs to stderr using a page allocated buffer.
         stderr,
 
-        /// Write logs to stdout
+        /// Write logs to stdout using a page allocated buffer.
         stdout,
 
-        /// Append logs to a file
-        /// Will seek to the end of the file before writing
+        /// Write logs to stderr using the provided buffer.
+        stderr_buffered: []u8,
+
+        /// Write logs to stdout using the provided buffer.
+        stdout_buffered: []u8,
+
+        /// Append logs to a file using a page allocated buffer.
+        /// Will seek to the end of the file before writing.
         file: std.fs.File,
 
-        /// Write logs to a writer
-        writer: std.io.AnyWriter,
+        /// Append logs to a file using the provided buffer.
+        /// Will seek to the end of the file before writing.
+        file_buffered: struct { file: std.fs.File, buffer: []u8 },
+
+        /// Write logs to a writer.
+        writer: *std.io.Writer,
     };
 };
 
@@ -209,9 +219,12 @@ pub fn tryInit(opts: InitOptions) TryInitError!void {
     }
 
     try switch (opts.output) {
-        .stderr => rt.for_stderr(opts.enable_color),
-        .stdout => rt.for_stdout(opts.enable_color),
-        .file => |file| rt.for_file(file),
+        .stderr => rt.for_stderr(null, opts.enable_color),
+        .stderr_buffered => |buffer| rt.for_stderr(buffer, opts.enable_color),
+        .stdout => rt.for_stdout(null, opts.enable_color),
+        .stdout_buffered => |buffer| rt.for_stdout(buffer, opts.enable_color),
+        .file => |file| rt.for_file(file, null),
+        .file_buffered => |file| rt.for_file(file.file, file.buffer),
         .writer => |writer| rt.for_writer(writer),
     };
 
@@ -256,10 +269,10 @@ const RtConfig = struct {
 
     const Out = union(enum) {
         noop,
-        stderr: std.fs.File,
-        stdout: std.fs.File,
-        file: std.fs.File,
-        writer: std.io.AnyWriter,
+        stderr: std.fs.File.Writer,
+        stdout: std.fs.File.Writer,
+        file: std.fs.File.Writer,
+        writer: *std.io.Writer,
     };
 
     const Alloc = union(enum) {
@@ -278,7 +291,7 @@ const RtConfig = struct {
             .owned => |*arena| self.filter.deinit(arena.allocator()),
         }
         if (self.output == .file) {
-            self.output.file.close();
+            self.output.file.file.close();
         }
         self.* = .{};
     }
@@ -333,29 +346,42 @@ const RtConfig = struct {
         }
     }
 
-    fn for_stderr(self: *RtConfig, enable_color: bool) !void {
-        const file = std.io.getStdErr();
-        self.output = .{ .stderr = file };
+    fn io_buffer(buffer: ?[]u8) ![]u8 {
+        return buffer orelse buf: {
+            // using the page allocator seems fine here, since we want
+            // to allocate a full page
+
+            break :buf try std.heap.page_allocator.alloc(u8, std.heap.pageSize());
+        };
+    }
+
+    fn for_stderr(self: *RtConfig, buffer: ?[]u8, enable_color: bool) !void {
+        const file = std.fs.File.stderr();
+        const writer = file.writer(try io_buffer(buffer));
+        self.output = .{ .stderr = writer };
         if (enable_color) {
             self.color_cfg = std.io.tty.detectConfig(file);
         }
     }
 
-    fn for_stdout(self: *RtConfig, enable_color: bool) !void {
-        const file = std.io.getStdOut();
-        self.output = .{ .stdout = file };
+    fn for_stdout(self: *RtConfig, buffer: ?[]u8, enable_color: bool) !void {
+        const file = std.fs.File.stdout();
+        const writer = file.writer(try io_buffer(buffer));
+        self.output = .{ .stdout = writer };
         if (enable_color) {
             self.color_cfg = std.io.tty.detectConfig(file);
         }
     }
 
-    fn for_file(self: *RtConfig, file: std.fs.File) !void {
+    fn for_file(self: *RtConfig, file: std.fs.File, buffer: ?[]u8) !void {
         const end = try file.getEndPos();
-        try file.seekTo(end);
-        self.output = .{ .file = file };
+        var writer = file.writer(try io_buffer(buffer));
+        try writer.seekTo(end);
+
+        self.output = .{ .file = writer };
     }
 
-    fn for_writer(self: *RtConfig, writer: std.io.AnyWriter) void {
+    fn for_writer(self: *RtConfig, writer: *std.io.Writer) void {
         self.output = .{ .writer = writer };
     }
 
@@ -369,18 +395,16 @@ const RtConfig = struct {
         const scope_name = comptime if (scope == .default) "" else @tagName(scope);
         if (self.filter.matches(scope_name, message_level) == false) return;
 
-        var bo: ?std.io.BufferedWriter(4096, std.fs.File.Writer) = null;
-        if (self.output == .stderr) std.debug.lockStdErr();
         const writer = writer: switch (self.output) {
             .noop => return,
-            .stderr, .stdout, .file => |*file| {
-                bo = std.io.bufferedWriter(file.writer());
-                break :writer bo.?.writer().any();
+            .stderr => |*file| {
+                std.debug.lockStdErr();
+                break :writer &file.interface;
             },
+            .stdout, .file => |*file| &file.interface,
             .writer => |w| w,
         };
         defer if (self.output == .stderr) std.debug.unlockStdErr();
-        defer if (bo) |*b| b.flush() catch {};
 
         const target = comptime if (scope == .default) "" else "(" ++ @tagName(scope) ++ ")";
 
@@ -395,7 +419,7 @@ const RtConfig = struct {
 
     fn logImpl(
         self: *const RtConfig,
-        writer: anytype,
+        writer: *std.io.Writer,
         comptime message_level: Filter.Level,
         comptime target: []const u8,
         comptime format: []const u8,
@@ -456,6 +480,7 @@ const RtConfig = struct {
         }
 
         try writer.print(format ++ "\n", args);
+        try writer.flush();
     }
 
     inline fn targetWidth(comptime width: usize) usize {

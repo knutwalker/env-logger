@@ -27,21 +27,21 @@ test "force analysis" {
 test "quick example" {
     const std = @import("std");
 
-    var output: std.ArrayListUnmanaged(u8) = .empty;
-    defer output.deinit(std.testing.allocator);
+    var output: std.io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
 
     init(.{
         .filter = .{ .level = .debug },
-        .output = .{ .writer = output.writer(std.testing.allocator).any() },
+        .output = .{ .writer = &output.writer },
     });
     const logger = setupFn(.{ .enable_trace_level = true });
 
     logger(.debug, .default, "message 1", .{});
     logger(.info, .scope, "message {}", .{1 + 1});
-    logger(.warn, .default, "{}", .{std.zig.fmtId("message 3")});
+    logger(.warn, .default, "{f}", .{std.zig.fmtId("message 3")});
     logger(.err, .longer_scope, "message 4", .{});
 
-    const out = try output.toOwnedSlice(std.testing.allocator);
+    const out = try output.toOwnedSlice();
     defer std.testing.allocator.free(out);
 
     try std.testing.expectEqualStrings(
