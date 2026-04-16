@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: MIT
 
 const std = @import("std");
+
 const env_logger = @import("env_logger");
 
 pub const std_options = env_logger.setup(.{});
 
-pub fn main() !void {
+pub fn main(init: std.process.Init.Minimal) !void {
     var gpa: std.heap.DebugAllocator(.{ .verbose_log = true }) = .init;
     defer if (gpa.deinit() == .leak) @panic("memory leak");
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
-    env_logger.init(.{ .allocator = .{ .split = .{
+    env_logger.initMin(init, .{ .allocator = .{ .split = .{
         .parse_gpa = gpa.allocator(),
         .filter_arena = arena.allocator(),
     } } });

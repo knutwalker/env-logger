@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 
 const std = @import("std");
+
 const env_logger = @import("env_logger");
 
 pub const std_options = env_logger.setup(.{
     .enable_trace_level = true,
 });
 
-pub fn main() !void {
-    env_logger.init(.{});
+pub fn main(init: std.process.Init) !void {
+    env_logger.init(init, .{});
 
     if (!env_logger.defaultLevelEnabled(.trace)) {
         std.debug.print("To see all log messages, run with `env ZIG_LOG=trace ...`\n", .{});

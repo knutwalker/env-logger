@@ -21,6 +21,14 @@
 //! scopes beginning with that value, such as `my_scope_nested`.
 //! Longer scopes, i.e. more granular ones, have precedence over shorter scopes.
 
+const std = @import("std");
+const mem = std.mem;
+const ArrayList = std.ArrayListUnmanaged;
+
+const Filter = @import("Filter.zig");
+const ScopeLevel = Filter.ScopeLevel;
+const Level = Filter.Level;
+
 test Builder {
     var builder = Builder.init(std.testing.allocator);
     defer builder.deinit();
@@ -47,15 +55,6 @@ test Builder {
     try std.testing.expect(filter.matches("", .warn));
     try std.testing.expect(filter.matches("", .info) == false);
 }
-
-const std = @import("std");
-const mem = std.mem;
-
-const Filter = @import("Filter.zig");
-const ScopeLevel = Filter.ScopeLevel;
-const Level = Filter.Level;
-
-const ArrayList = std.ArrayListUnmanaged;
 
 const Builder = @This();
 
@@ -87,8 +86,8 @@ pub fn parse(self: *Builder, spec: []const u8) mem.Allocator.Error!void {
     var filters = std.mem.splitScalar(u8, spec, ',');
     while (filters.next()) |env_filter| {
         var env_kvs = std.mem.splitScalar(u8, std.mem.trim(u8, env_filter, &std.ascii.whitespace), '=');
-        const scope_name_or_filter = std.mem.trimRight(u8, env_kvs.first(), &std.ascii.whitespace);
-        const maybe_filter = std.mem.trimLeft(u8, env_kvs.rest(), &std.ascii.whitespace);
+        const scope_name_or_filter = std.mem.trimEnd(u8, env_kvs.first(), &std.ascii.whitespace);
+        const maybe_filter = std.mem.trimStart(u8, env_kvs.rest(), &std.ascii.whitespace);
 
         if (scope_name_or_filter.len == 0) {
             continue;
@@ -124,28 +123,25 @@ pub fn parseLogErrors(self: *Builder, spec: []const u8) mem.Allocator.Error!void
     };
 }
 
-pub fn parseEnv(self: *Builder, env_var: []const u8) (mem.Allocator.Error)!bool {
-    const spec = std.process.getEnvVarOwned(self.gpa, env_var) catch |err| switch (err) {
-        error.EnvironmentVariableNotFound => return false,
-        error.InvalidWtf8 => {
-            try self.invalidFilter(env_var);
-            return false;
-        },
-        else => |e| return e,
-    };
-    defer self.gpa.free(spec);
+pub fn parseEnv(self: *Builder, env_var: []const u8, map: *const std.process.Environ.Map) (mem.Allocator.Error)!bool {
+    if (@import("builtin").os.tag == .windows and !std.unicode.wtf8ValidateSlice(env_var)) {
+        try self.invalidFilter(env_var);
+        return false;
+    }
+
+    const spec = map.get(env_var) orelse return false;
     try self.parse(spec);
     return true;
 }
 
-pub fn tryParseEnv(self: *Builder, env_var: []const u8) (error{BuilderError} || mem.Allocator.Error)!bool {
-    const ret = try self.parseEnv(env_var);
+pub fn tryParseEnv(self: *Builder, env_var: []const u8, map: *const std.process.Environ.Map) (error{BuilderError} || mem.Allocator.Error)!bool {
+    const ret = try self.parseEnv(env_var, map);
     if (self.diags.items.len > 0) return error.BuilderError;
     return ret;
 }
 
-pub fn parseEnvLogErrors(self: *Builder, env_var: []const u8) mem.Allocator.Error!bool {
-    return self.tryParseEnv(env_var) catch |err| switch (err) {
+pub fn parseEnvLogErrors(self: *Builder, env_var: []const u8, map: *const std.process.Environ.Map) mem.Allocator.Error!bool {
+    return self.tryParseEnv(env_var, map) catch |err| switch (err) {
         error.BuilderError => {
             self.logDiagnostics();
             return false;

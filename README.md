@@ -14,13 +14,15 @@ It provides a `logFn` function that can be set to your `std.Options`.
 ## Quick start example
 
 ```zig
+
 const std = @import("std");
+
 const env_logger = @import("env_logger");
 
 pub const std_options = env_logger.setup(.{});
 
-pub fn main() !void {
-    env_logger.init(.{});
+pub fn main(init: std.process.Init) !void {
+    env_logger.init(init, .{});
 
     std.log.debug("debug message", .{});
     std.log.info("info message", .{});
@@ -47,7 +49,7 @@ exe.root_module.addImport("env-logger", b.dependency("env-logger", .{}).module("
 ```
 
 > [!IMPORTANT]
-> `env-logger` tracks Zig `0.15.0`
+> `env-logger` tracks Zig `0.16.0`
 
 ## Examples
 
@@ -56,19 +58,22 @@ exe.root_module.addImport("env-logger", b.dependency("env-logger", .{}).module("
 Setting up the logger happens in two steps:
 
 1. Call `env_logger.setup(.{})` and set the value as your `std.Options`.
-2. Call `env_logger.init(.{})` once and as early as possible to initialize the logger.
+2. Call `env_logger.init(init, .{})` once and as early as possible to initialize the logger.
+   The first argument is the `std.process.Init` instance and provides the `Io` instance, environment, and allocators.
 
 `env-logger` will read the `ZIG_LOG` environment variable and parse it as the log level.
 It logs colored messages to stderr by default.
 
 ```zig
+
 const std = @import("std");
+
 const env_logger = @import("env_logger");
 
 pub const std_options = env_logger.setup(.{});
 
-pub fn main() !void {
-    env_logger.init(.{});
+pub fn main(init: std.process.Init) !void {
+    env_logger.init(init, .{});
 
     if (!env_logger.defaultLevelEnabled(.debug)) {
         std.debug.print("To see all log messages, run with `env ZIG_LOG=debug ...`\n", .{});
@@ -93,15 +98,17 @@ First enable this in the `setup` opts.
 To log a trace message, prefix a debug message with `TRACE: ` (including the colon and space).
 
 ```zig
+
 const std = @import("std");
+
 const env_logger = @import("env_logger");
 
 pub const std_options = env_logger.setup(.{
     .enable_trace_level = true,
 });
 
-pub fn main() !void {
-    env_logger.init(.{});
+pub fn main(init: std.process.Init) !void {
+    env_logger.init(init, .{});
 
     if (!env_logger.defaultLevelEnabled(.trace)) {
         std.debug.print("To see all log messages, run with `env ZIG_LOG=trace ...`\n", .{});
@@ -124,13 +131,15 @@ By default, the logger will look for the `ZIG_LOG` environment variable in order
 If you want to use a different environment variable, set the name in the`filter` option.
 
 ```zig
+
 const std = @import("std");
+
 const env_logger = @import("env_logger");
 
 pub const std_options = env_logger.setup(.{});
 
-pub fn main() !void {
-    env_logger.init(.{
+pub fn main(init: std.process.Init) !void {
+    env_logger.init(init, .{
         .filter = .{ .env = .{ .name = "MY_LOG_ENV" } },
     });
 
@@ -153,13 +162,15 @@ pub fn main() !void {
 Scoped loggers other than the `.default` scope will be included in the log message.
 
 ```zig
+
 const std = @import("std");
+
 const env_logger = @import("env_logger");
 
 pub const std_options = env_logger.setup(.{});
 
-pub fn main() !void {
-    env_logger.init(.{});
+pub fn main(init: std.process.Init) !void {
+    env_logger.init(init, .{});
 
     if (!env_logger.defaultLevelEnabled(.debug)) {
         std.debug.print("To see all log messages, run with `env ZIG_LOG=debug ...`\n", .{});
@@ -183,13 +194,15 @@ The log level can also be set programmatically instead of using the environment 
 It can also be changed at runtime.
 
 ```zig
+
 const std = @import("std");
+
 const env_logger = @import("env_logger");
 
 pub const std_options = env_logger.setup(.{});
 
-pub fn main() !void {
-    env_logger.init(.{
+pub fn main(init: std.process.Init) !void {
+    env_logger.init(init, .{
         .filter = .{ .level = .info },
     });
 
@@ -212,7 +225,9 @@ Alternatively, you can use the `env_logger.setupFn` function and set the `logFn`
 This allows you to statically disable certain log levels since the `setup` function sets the `log_level` field to `.debug`.
 
 ```zig
+
 const std = @import("std");
+
 const env_logger = @import("env_logger");
 
 pub const std_options = env_logger.setupWith(
@@ -223,8 +238,8 @@ pub const std_options = env_logger.setupWith(
     },
 );
 
-pub fn main() !void {
-    env_logger.init(.{});
+pub fn main(init: std.process.Init) !void {
+    env_logger.init(init, .{});
 
     if (!env_logger.defaultLevelEnabled(.debug)) {
         std.debug.print("To see all log messages, run with `env ZIG_LOG=debug ...`\n", .{});
@@ -243,13 +258,15 @@ pub fn main() !void {
 You can disable the level and logger parts of the log message and only render the message itself.
 
 ```zig
+
 const std = @import("std");
+
 const env_logger = @import("env_logger");
 
 pub const std_options = env_logger.setup(.{});
 
-pub fn main() !void {
-    env_logger.init(.{
+pub fn main(init: std.process.Init) !void {
+    env_logger.init(init, .{
         .render_level = false,
         .render_logger = false,
     });
@@ -275,13 +292,15 @@ pub fn main() !void {
 You can also add timestamps to the log messages.
 
 ```zig
+
 const std = @import("std");
+
 const env_logger = @import("env_logger");
 
 pub const std_options = env_logger.setup(.{});
 
-pub fn main() !void {
-    env_logger.init(.{
+pub fn main(init: std.process.Init) !void {
+    env_logger.init(init, .{
         .render_timestamp = true,
     });
 
@@ -304,45 +323,43 @@ pub fn main() !void {
 By default, the logger logs to stderr, but it can also be configured to log to stdout, append to a file, or write to a writer.
 
 ```zig
+
 const std = @import("std");
+
 const env_logger = @import("env_logger");
 
 pub const std_options = env_logger.setup(.{});
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    var args = try std.process.argsWithAllocator(allocator);
+pub fn main(init: std.process.Init) !void {
+    var args = try init.minimal.args.iterateAllocator(init.gpa);
     defer args.deinit();
 
     _ = args.next() orelse return; // skip the executable name
 
-    const output_filename = args.next() orelse {
-        std.debug.print("Usage: log_to_file $FILENAME\n", .{});
-        std.process.exit(1);
-    };
-
     var output: env_logger.InitOptions.Output = .stderr;
-    var buf: ?std.io.Writer.Allocating = null;
+    var buf: ?std.Io.Writer.Allocating = null;
     defer if (buf) |*b| b.deinit();
 
-    if (std.mem.eql(u8, output_filename, "-")) {
-        output = .stdout;
-    } else if (std.mem.eql(u8, output_filename, "+")) {
-        buf = .init(allocator);
-        output = .{ .writer = &buf.?.writer };
-    } else {
-        const output_file = try std.fs.cwd().createFile(
-            output_filename,
-            // Set `truncate` to false to append to the file.
-            .{ .truncate = false },
-        );
-        output = .{ .file = output_file };
+    if (args.next()) |output_filename| {
+        if (std.mem.eql(u8, output_filename, "-")) {
+            output = .stdout;
+        } else if (std.mem.eql(u8, output_filename, "+")) {
+            buf = .init(init.gpa);
+            output = .{ .writer = &buf.?.writer };
+        } else {
+            const output_file = try std.Io.Dir.cwd().createFile(
+                init.io,
+                output_filename,
+                // To append to the log, set `truncate` to false and `read` to true.
+                // Alternatively, use `file_start` to always write from the start
+                //  and not require read permissions.
+                .{ .read = true, .truncate = false },
+            );
+            output = .{ .file = output_file };
+        }
     }
 
-    env_logger.init(.{ .output = output });
+    env_logger.init(init, .{ .output = output });
     // deinit will close any eventual file handles
     defer env_logger.deinit();
 
@@ -369,13 +386,15 @@ You can disable this by setting the `enable_color` option to `false`.
 Alternatively, you can force the logger to use colors by setting the `force_color` option to `true`.
 
 ```zig
+
 const std = @import("std");
+
 const env_logger = @import("env_logger");
 
 pub const std_options = env_logger.setup(.{});
 
-pub fn main() !void {
-    env_logger.init(.{
+pub fn main(init: std.process.Init) !void {
+    env_logger.init(init, .{
         // disable all use of colors,
         .enable_color = false,
         // force the use of colors, also for files and writers
@@ -400,8 +419,11 @@ pub fn main() !void {
 ### Configure allocators
 
 Parsing and constructing the log filter requires allocations.
-By default, the logger uses the `std.heap.page_allocator` for this.
-If you want to use a different allocator, you can set the `allocator` option to a `std.mem.Allocator`.
+The default pattern is to pass the `std.process.Init` instance to `init`.
+This uses the allocators setup by the juicy main function.
+Skipping this via `initRaw` uses a `std.heap.page_allocator` and leaks memory.
+If you want to use a different allocator, you can set the `allocator` option in `init`.
+You can also drop down to `initMin` and pass `std.process.Init.Minimal`.
 
 Since the filter is supposed to be kept for the remainder
 of the program's lifetime, you can set two different allocators, one
@@ -409,19 +431,21 @@ for all the parsing (e.g. a gpa, like the `DebugAllocator`), and another
 one for the final filter allocation (e.g. an arena allocator).
 
 ```zig
+
 const std = @import("std");
+
 const env_logger = @import("env_logger");
 
 pub const std_options = env_logger.setup(.{});
 
-pub fn main() !void {
+pub fn main(init: std.process.Init.Minimal) !void {
     var gpa: std.heap.DebugAllocator(.{ .verbose_log = true }) = .init;
     defer if (gpa.deinit() == .leak) @panic("memory leak");
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
-    env_logger.init(.{ .allocator = .{ .split = .{
+    env_logger.initMin(init, .{ .allocator = .{ .split = .{
         .parse_gpa = gpa.allocator(),
         .filter_arena = arena.allocator(),
     } } });
@@ -440,13 +464,11 @@ pub fn main() !void {
 
 ![allocator.png](images/allocator.png)
 
-
 ## Contributing
 
 Contributions are welcome!
 
 Please open an issue or a pull request if you have any suggestions or improvements.
-
 
 ## License
 
