@@ -39,7 +39,7 @@ pub fn setupWith(comptime opts: SetupOptions, std_opts: std.Options) std.Options
 /// [`std.Options`] in your root of the application.
 pub fn loggerFn(comptime opts: SetupOptions) fn (
     comptime message_level: std.log.Level,
-    comptime scope: @TypeOf(.enum_literal),
+    comptime scope: @EnumLiteral(),
     comptime format: []const u8,
     args: anytype,
 ) void {
@@ -500,7 +500,7 @@ const RtConfig = struct {
 
     fn defaultLogFn(
         comptime message_level: std.log.Level,
-        comptime scope: @TypeOf(.enum_literal),
+        comptime scope: @EnumLiteral(),
         comptime format: []const u8,
         args: anytype,
     ) void {
@@ -510,7 +510,7 @@ const RtConfig = struct {
 
     fn traceLogFn(
         comptime message_level: std.log.Level,
-        comptime scope: @TypeOf(.enum_literal),
+        comptime scope: @EnumLiteral(),
         comptime format: []const u8,
         args: anytype,
     ) void {
@@ -525,7 +525,7 @@ const RtConfig = struct {
     inline fn logFn(
         self: *RtConfig,
         comptime message_level: Filter.Level,
-        comptime scope: @TypeOf(.enum_literal),
+        comptime scope: @EnumLiteral(),
         comptime format: []const u8,
         args: anytype,
     ) void {
