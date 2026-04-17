@@ -191,7 +191,7 @@ pub fn diagnostics(self: *const Builder) []const Diagnostic {
 pub fn build(self: *Builder) mem.Allocator.Error!Filter {
     if (self.filters.items.len == 0) return .default;
     const filters = try self.buildFilters();
-    return intoFilter(filters);
+    return fromFilters(filters);
 }
 
 /// Allocates the returned slice with the provided arena.
@@ -200,7 +200,7 @@ pub fn build(self: *Builder) mem.Allocator.Error!Filter {
 pub fn buildWithAllocator(self: *Builder, arena: mem.Allocator) mem.Allocator.Error!Filter {
     if (self.filters.items.len == 0) return .default;
     const filters = try self.buildFiltersAlloc(arena);
-    return intoFilter(filters);
+    return fromFilters(filters);
 }
 
 fn buildFilters(self: *Builder) mem.Allocator.Error![]ScopeLevel {
@@ -226,21 +226,18 @@ fn buildFiltersAlloc(self: *Builder, arena: mem.Allocator) mem.Allocator.Error![
     return fs.items;
 }
 
-fn intoFilter(filters: []ScopeLevel) Filter {
-    std.mem.sort(ScopeLevel, filters, {}, struct {
-        fn lt(_: void, lhs: ScopeLevel, rhs: ScopeLevel) bool {
-            return lhs.scope.len > rhs.scope.len;
-        }
-    }.lt);
-
-    return .{ .filters = filters };
+pub fn fromFilters(filters: []ScopeLevel) Filter {
+    return .filters(filters);
 }
 
-pub fn singleLevel(arena: mem.Allocator, level: Level) mem.Allocator.Error!Filter {
+pub fn fromSingle(filter: *const ScopeLevel) Filter {
+    return .single(filter);
+}
+
+pub fn fromLevel(arena: mem.Allocator, level: Level) mem.Allocator.Error!Filter {
     const filter = try arena.create(ScopeLevel);
     filter.* = .{ .scope = "", .level = level };
-
-    return .{ .filters = @as(*[1]ScopeLevel, filter) };
+    return .single(filter);
 }
 
 pub const Diagnostic = union(enum) {
@@ -258,11 +255,11 @@ fn testParse(spec: []const u8) ![]const Filter.ScopeLevel {
 
     try builder.parse(spec);
     const filter = try builder.build();
-    return filter.filters;
+    return filter._filters;
 }
 
 fn deinitFilter(filters: []const Filter.ScopeLevel) void {
-    (Filter{ .filters = filters }).deinit(std.testing.allocator);
+    (Filter{ ._filters = filters }).deinit(std.testing.allocator);
 }
 
 test "parse empty" {

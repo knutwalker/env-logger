@@ -6,18 +6,40 @@ const Builder = @import("Builder.zig");
 const Filter = @This();
 
 /// Filters need to be sorted by length of scope, descending.
-/// Consider using the `Builder` to construct a filter.
-filters: []const ScopeLevel,
+/// Don't create instances using the default constructor, always use `filters`.
+_filters: []const ScopeLevel,
 
 /// The default filter only allows all error log messages.
-pub const default: Filter = .{ .filters = &[_]ScopeLevel{.default} };
+pub const default: Filter = .{ ._filters = &[_]ScopeLevel{.default} };
 
 pub const ScopeLevel = struct {
-    scope: []const u8,
+    scope: []const u8 = "",
     level: Level,
 
-    pub const default: ScopeLevel = .{ .scope = "", .level = .err };
+    pub const default: ScopeLevel = .{ .level = .err };
+
+    pub fn of(level: Level) ScopeLevel {
+        return .{ .level = level };
+    }
+
+    pub fn scoped(scope: @EnumLiteral(), level: Level) ScopeLevel {
+        return .{ .scope = @tagName(scope), .level = level };
+    }
 };
+
+pub fn single(filter: *const ScopeLevel) Filter {
+    return .{ ._filters = @as(*const [1]ScopeLevel, filter) };
+}
+
+pub fn filters(scope_filters: []ScopeLevel) Filter {
+    std.mem.sort(ScopeLevel, scope_filters, {}, struct {
+        fn lt(_: void, lhs: ScopeLevel, rhs: ScopeLevel) bool {
+            return lhs.scope.len > rhs.scope.len;
+        }
+    }.lt);
+
+    return .{ ._filters = scope_filters };
+}
 
 /// This mirrors `std.log.Level` and adds the `trace` level.
 pub const Level = enum {
@@ -138,17 +160,17 @@ pub const Level = enum {
 };
 
 pub fn deinit(self: Filter, allocator: mem.Allocator) void {
-    for (self.filters) |sl| {
+    for (self._filters) |sl| {
         if (sl.scope.len > 0) allocator.free(sl.scope);
     }
-    allocator.free(self.filters);
+    allocator.free(self._filters);
 }
 
 /// Returns whether the given log level is enabled for the given scope.
 /// Assumes the the filters are sorted by length of scope, descending.
 /// If this assumption is violated, the result may be incorrect.
 pub fn matches(self: *const Filter, scope: []const u8, level: Level) bool {
-    for (self.filters) |filter| {
+    for (self._filters) |filter| {
         if (std.mem.startsWith(u8, scope, filter.scope)) {
             return @intFromEnum(level) <= @intFromEnum(filter.level);
         }
@@ -168,7 +190,7 @@ test "matches on default filter" {
 test "matches on single level filter" {
     const t = std.testing;
 
-    const filter = Filter{ .filters = &[_]ScopeLevel{.{ .scope = "", .level = .debug }} };
+    const filter = Filter.single(&.of(.debug));
 
     try t.expectEqual(true, filter.matches("", .info));
     try t.expectEqual(true, filter.matches("", .debug));
@@ -181,7 +203,7 @@ test "matches on single level filter" {
 test "matches on scoped level filter" {
     const t = std.testing;
 
-    const filter = Filter{ .filters = &[_]ScopeLevel{.{ .scope = "scope", .level = .debug }} };
+    const filter = Filter.single(&.{ .scope = "scope", .level = .debug });
 
     try t.expectEqual(false, filter.matches("", .info));
     try t.expectEqual(false, filter.matches("", .debug));
@@ -194,10 +216,11 @@ test "matches on scoped level filter" {
 test "matches on multiple scoped level filters" {
     const t = std.testing;
 
-    const filter = Filter{ .filters = &[_]ScopeLevel{
+    var scope_filters = [_]ScopeLevel{
         .{ .scope = "scope2", .level = .debug },
         .{ .scope = "scope", .level = .info },
-    } };
+    };
+    const filter = Filter.filters(&scope_filters);
 
     try t.expectEqual(false, filter.matches("", .info));
     try t.expectEqual(false, filter.matches("", .debug));

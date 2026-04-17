@@ -116,6 +116,7 @@ pub fn build(b: *std.Build) void {
         log_outputs,
         colors,
         allocator,
+        allocation_free,
 
         all,
     };

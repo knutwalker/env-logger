@@ -27,6 +27,7 @@ pub fn main(init: std.process.Init) !void {
         .log_outputs = read("examples/log_outputs.zig"),
         .colors = read("examples/colors.zig"),
         .allocator = read("examples/allocator.zig"),
+        .allocation_free = read("examples/allocation_free.zig"),
     });
 
     try bo.flush();

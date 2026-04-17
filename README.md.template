@@ -170,6 +170,15 @@ one for the final filter allocation (e.g. an arena allocator).
 
 ![allocator.png](images/allocator.png)
 
+### Allocation-free confifuration
+
+Generally parsing the filter options at runtime requires allocations, even of a single `level` is provided.
+It is possible to use `{[name]s}` allocation-free, but the API is not as straight-forward.
+
+```zig
+{[allocation_free]s}
+```
+
 ## Contributing
 
 Contributions are welcome!

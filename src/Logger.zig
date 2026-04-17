@@ -196,7 +196,7 @@ pub const InitOptions = struct {
         }
 
         pub fn wrapLevel(level: Filter.Level, arena: std.mem.Allocator) TryInitError!Filter {
-            return try Builder.singleLevel(arena, level);
+            return try Builder.fromLevel(arena, level);
         }
 
         fn intoFilter(
@@ -375,8 +375,13 @@ const RtConfig = struct {
         self.io = opts.io orelse std.Options.debug_io;
         self.buffer = opts.write_buffer orelse try heap_buffer();
 
+        self.filter_alloc = null;
+        self.filter = .default;
+
         if (opts.filter) |init_filter| {
-            switch (opts.allocator) {
+            if (init_filter == .filter) {
+                self.filter = init_filter.filter;
+            } else switch (opts.allocator) {
                 .leaky => {
                     var parse_gpa: std.heap.DebugAllocator(.{}) = .init;
                     defer _ = parse_gpa.deinit();
@@ -394,9 +399,6 @@ const RtConfig = struct {
                     self.filter = try init_filter.intoFilter(split.parse_gpa, split.filter_arena, opts.environ);
                 },
             }
-        } else {
-            self.filter_alloc = null;
-            self.filter = .default;
         }
 
         self.output = switch (opts.output) {

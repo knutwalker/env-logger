@@ -3,6 +3,7 @@
 pub const Builder = @import("Builder.zig");
 pub const Filter = @import("Filter.zig");
 pub const Level = Filter.Level;
+pub const ScopeLevel = Filter.ScopeLevel;
 const Logger = @import("Logger.zig");
 pub const defaultLevelEnabled = Logger.defaultLevelEnabled;
 pub const levelEnabled = Logger.levelEnabled;
