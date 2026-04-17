@@ -35,9 +35,14 @@ pub fn main(init: std.process.Init) !void {
 
 fn read(comptime file: []const u8) []const u8 {
     var content = @as([]const u8, @embedFile(file));
-    if (std.mem.startsWith(u8, content, "// SPDX-License-Identifier")) {
-        const line_end = std.mem.indexOfScalar(u8, content, '\n').?;
-        content = content[line_end + 2 ..];
+
+    while (std.mem.findScalar(u8, content, '\n')) |line_end| {
+        const line = std.mem.trim(u8, content[0..line_end], &std.ascii.whitespace);
+        if (line.len > 0 and std.mem.startsWith(u8, line, "// SPDX-License-Identifier") == false) {
+            break;
+        }
+        content = content[line_end + 1 ..];
     }
+
     return content;
 }

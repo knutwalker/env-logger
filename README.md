@@ -14,7 +14,6 @@ It provides a `logFn` function that can be set to your `std.Options`.
 ## Quick start example
 
 ```zig
-
 const std = @import("std");
 
 const env_logger = @import("env_logger");
@@ -65,7 +64,6 @@ Setting up the logger happens in two steps:
 It logs colored messages to stderr by default.
 
 ```zig
-
 const std = @import("std");
 
 const env_logger = @import("env_logger");
@@ -98,7 +96,6 @@ First enable this in the `setup` opts.
 To log a trace message, prefix a debug message with `TRACE: ` (including the colon and space).
 
 ```zig
-
 const std = @import("std");
 
 const env_logger = @import("env_logger");
@@ -131,7 +128,6 @@ By default, the logger will look for the `ZIG_LOG` environment variable in order
 If you want to use a different environment variable, set the name in the`filter` option.
 
 ```zig
-
 const std = @import("std");
 
 const env_logger = @import("env_logger");
@@ -162,7 +158,6 @@ pub fn main(init: std.process.Init) !void {
 Scoped loggers other than the `.default` scope will be included in the log message.
 
 ```zig
-
 const std = @import("std");
 
 const env_logger = @import("env_logger");
@@ -194,7 +189,6 @@ pub fn main(init: std.process.Init) !void {
 You can set the `min_log_level` in `setup` to override this and full disable certain levels.
 
 ```zig
-
 const std = @import("std");
 
 const env_logger = @import("env_logger");
@@ -232,7 +226,6 @@ In case you want to set other `std.Options`, you can use the `env_logger.setupWi
 Alternatively, you can use the `env_logger.loggerFn` function and set the `logFn` field.
 
 ```zig
-
 const std = @import("std");
 
 const env_logger = @import("env_logger");
@@ -265,7 +258,6 @@ pub fn main(init: std.process.Init) !void {
 You can disable the level and logger parts of the log message and only render the message itself.
 
 ```zig
-
 const std = @import("std");
 
 const env_logger = @import("env_logger");
@@ -299,7 +291,6 @@ pub fn main(init: std.process.Init) !void {
 You can also add timestamps to the log messages.
 
 ```zig
-
 const std = @import("std");
 
 const env_logger = @import("env_logger");
@@ -330,7 +321,6 @@ pub fn main(init: std.process.Init) !void {
 By default, the logger logs to stderr, but it can also be configured to log to stdout, append to a file, or write to a writer.
 
 ```zig
-
 const std = @import("std");
 
 const env_logger = @import("env_logger");
@@ -393,7 +383,6 @@ You can disable this by setting the `enable_color` option to `false`.
 Alternatively, you can force the logger to use colors by setting the `force_color` option to `true`.
 
 ```zig
-
 const std = @import("std");
 
 const env_logger = @import("env_logger");
@@ -438,7 +427,6 @@ for all the parsing (e.g. a gpa, like the `DebugAllocator`), and another
 one for the final filter allocation (e.g. an arena allocator).
 
 ```zig
-
 const std = @import("std");
 
 const env_logger = @import("env_logger");
@@ -477,7 +465,6 @@ Generally parsing the filter options at runtime requires allocations, even of a 
 It is possible to use `env-logger` allocation-free, but the API is not as straight-forward.
 
 ```zig
-
 const std = @import("std");
 
 const env_logger = @import("env_logger");
