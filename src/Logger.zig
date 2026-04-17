@@ -341,13 +341,23 @@ pub const TryInitError = error{
     InvalidFilterValue,
 } || std.Io.File.LengthError || std.Io.File.SeekError || std.Io.Writer.Error || std.mem.Allocator.Error;
 
+/// Deprecated: use defaultLogEnabled
 pub fn defaultLevelEnabled(level: Filter.Level) bool {
     return levelEnabled(.default, level);
 }
 
-pub fn levelEnabled(scope: @TypeOf(.enum_literal), level: Filter.Level) bool {
+/// Deprecated: use logEnabled
+pub fn levelEnabled(scope: @EnumLiteral(), level: Filter.Level) bool {
+    return logEnabled(level, scope);
+}
+
+pub fn logEnabled(level: Filter.Level, scope: @EnumLiteral()) bool {
     const target = if (scope == .default) "" else @tagName(scope);
     return RtConfig.instance.filter.matches(target, level);
+}
+
+pub fn defaultLogEnabled(level: Filter.Level) bool {
+    return RtConfig.instance.filter.matches("", level);
 }
 
 pub fn deinit() void {
