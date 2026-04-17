@@ -265,6 +265,9 @@ pub const InitOptions = struct {
 ///
 /// This method needs to be called as early as possible, before any logging is done.
 ///
+/// Calling this function should be followed by `defer` calling [`deinit`], otherwise
+/// any logs at the end of main (e.g. in case of memory leaks) could segfault.
+///
 /// Panics if called more than once.
 pub fn init(main_init: std.process.Init, opts: InitOptions) void {
     return initRaw(opts.set_from_init(main_init));
@@ -275,6 +278,9 @@ pub fn init(main_init: std.process.Init, opts: InitOptions) void {
 ///
 /// This method needs to be called as early as possible, before any logging is done.
 ///
+/// Calling this function should be followed by `defer` calling [`deinit`], otherwise
+/// any logs at the end of main (e.g. in case of memory leaks) could segfault.
+///
 /// Panics if called more than once.
 pub fn initMin(main_init: std.process.Init.Minimal, opts: InitOptions) void {
     return initRaw(opts.set_from_minimal(main_init));
@@ -283,6 +289,9 @@ pub fn initMin(main_init: std.process.Init.Minimal, opts: InitOptions) void {
 /// Initialize the logger using the given options.
 ///
 /// This method needs to be called as early as possible, before any logging is done.
+///
+/// Calling this function should be followed by `defer` calling [`deinit`], otherwise
+/// any logs at the end of main (e.g. in case of memory leaks) could segfault.
 ///
 /// Panics if called more than once.
 pub fn initRaw(opts: InitOptions) void {
