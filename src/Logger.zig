@@ -347,7 +347,6 @@ pub fn deinit() void {
 
 const RtConfig = struct {
     io: std.Io,
-    buffer: []u8,
     filter_alloc: ?Alloc,
     filter: Filter,
     color_cfg: std.Io.Terminal.Mode,
@@ -357,6 +356,7 @@ const RtConfig = struct {
     render_logger: bool,
 
     const Out = union(enum) {
+        debug,
         stderr: std.Io.File.Writer,
         stdout: std.Io.File.Writer,
         file: std.Io.File.Writer,
@@ -368,12 +368,23 @@ const RtConfig = struct {
         alloc: std.mem.Allocator,
     };
 
-    var instance: RtConfig = undefined;
+    const minimal: RtConfig = .{
+        .io = std.Options.debug_io,
+        .filter_alloc = null,
+        .filter = .all,
+        .color_cfg = .no_color,
+        .output = .debug,
+        .render_level = true,
+        .render_timestamp = false,
+        .render_logger = true,
+    };
+
+    var instance: RtConfig = .minimal;
     var max_width: std.atomic.Value(usize) = .init(0);
 
     fn init(self: *RtConfig, opts: InitOptions) TryInitError!void {
         self.io = opts.io orelse std.Options.debug_io;
-        self.buffer = opts.write_buffer orelse try heap_buffer();
+        const buffer = opts.write_buffer orelse try heap_buffer();
 
         self.filter_alloc = null;
         self.filter = .default;
@@ -402,16 +413,17 @@ const RtConfig = struct {
         }
 
         self.output = switch (opts.output) {
-            .stderr => for_stderr(self.io, self.buffer),
-            .stdout => for_stdout(self.io, self.buffer),
-            .file => |file| try for_file(self.io, self.buffer, file, true),
-            .file_start => |file| try for_file(self.io, self.buffer, file, false),
+            .stderr => for_stderr(self.io, buffer),
+            .stdout => for_stdout(self.io, buffer),
+            .file => |file| try for_file(self.io, buffer, file, true),
+            .file_start => |file| try for_file(self.io, buffer, file, false),
             .writer => |writer| for_writer(writer),
         };
 
         self.color_cfg = switch (self.output) {
             .stderr, .stdout, .file => |file| try .detect(self.io, file.file, opts.enable_color == false, opts.force_color),
             .writer => .no_color,
+            .debug => unreachable,
         };
 
         self.render_level = opts.render_level;
@@ -464,7 +476,7 @@ const RtConfig = struct {
         if (self.output == .file) {
             self.output.file.file.close(self.io);
         }
-        self.* = undefined;
+        self.* = .minimal;
     }
 
     fn defaultLogFn(
@@ -503,7 +515,8 @@ const RtConfig = struct {
 
         const target = comptime if (scope == .default) "" else "(" ++ @tagName(scope) ++ ")";
 
-        const writer: *std.Io.Writer = writer: switch (self.output) {
+        const term: std.Io.Terminal = term: switch (self.output) {
+            .debug => std.debug.lockStderr(&.{}).terminal(),
             .stderr => |*file| {
                 const io = self.io;
                 const prev = io.swapCancelProtection(.blocked);
@@ -511,15 +524,19 @@ const RtConfig = struct {
                 _ = io.lockStderr(&.{}, self.color_cfg) catch |err| switch (err) {
                     error.Canceled => unreachable, // Cancel protection enabled above.
                 };
-                break :writer &file.interface;
+                break :term .{ .writer = &file.interface, .mode = self.color_cfg };
             },
-            .stdout, .file => |*file| &file.interface,
-            .writer => |w| w,
+            .stdout, .file => |*file| .{ .writer = &file.interface, .mode = self.color_cfg },
+            .writer => |w| .{ .writer = w, .mode = self.color_cfg },
         };
-        defer if (self.output == .stderr) self.io.unlockStderr();
+        defer switch (self.output) {
+            .stderr => self.io.unlockStderr(),
+            .debug => std.debug.unlockStderr(),
+            else => {},
+        };
 
         self.logImpl(
-            .{ .writer = writer, .mode = self.color_cfg },
+            term,
             message_level,
             target,
             format,

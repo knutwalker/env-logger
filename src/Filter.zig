@@ -10,7 +10,10 @@ const Filter = @This();
 _filters: []const ScopeLevel,
 
 /// The default filter only allows all error log messages.
-pub const default: Filter = .{ ._filters = &[_]ScopeLevel{.default} };
+pub const default: Filter = .single(&.default);
+
+/// Filter that fill allow all messages.
+pub const all: Filter = .single(&.of(.trace));
 
 pub const ScopeLevel = struct {
     scope: []const u8 = "",
