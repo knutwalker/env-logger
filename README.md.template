@@ -90,22 +90,21 @@ Scoped loggers other than the `.default` scope will be included in the log messa
 
 ![scoped_log.png](images/scoped_log.png)
 
-### Dynamic log level
+### Static log level
 
-The log level can also be set programmatically instead of using the environment variable.
-It can also be changed at runtime.
+`{[name]s}` sets the `log_level` in `std.Options` to `.debug` in order to apply to actual level at runtime.
+You can set the `min_log_level` in `setup` to override this and full disable certain levels.
 
 ```zig
-{[dynamic_log_level]s}
+{[static_log_level]s}
 ```
 
-![dynamic_log_level.png](images/dynamic_log_level.png)
+<!-- TODO: ![static_log_level.png](images/static_log_level.png)-->
 
 ### Custom `std.Options`
 
 In case you want to set other `std.Options`, you can use the `{[module_name]s}.setupWith` function.
-Alternatively, you can use the `{[module_name]s}.setupFn` function and set the `logFn` field.
-This allows you to statically disable certain log levels since the `setup` function sets the `log_level` field to `.debug`.
+Alternatively, you can use the `{[module_name]s}.loggerFn` function and set the `logFn` field.
 
 ```zig
 {[custom_std_options]s}

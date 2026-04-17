@@ -188,10 +188,10 @@ pub fn main(init: std.process.Init) !void {
 
 ![scoped_log.png](images/scoped_log.png)
 
-### Dynamic log level
+### Static log level
 
-The log level can also be set programmatically instead of using the environment variable.
-It can also be changed at runtime.
+`env-logger` sets the `log_level` in `std.Options` to `.debug` in order to apply to actual level at runtime.
+You can set the `min_log_level` in `setup` to override this and full disable certain levels.
 
 ```zig
 
@@ -199,30 +199,37 @@ const std = @import("std");
 
 const env_logger = @import("env_logger");
 
-pub const std_options = env_logger.setup(.{});
+// Setting a log_level here will always discard any message of a lower level
+// even if the filter would allow them. Higher levels can still be filtered.
+pub const std_options = env_logger.setup(.{ .min_log_level = .info });
 
 pub fn main(init: std.process.Init) !void {
-    env_logger.init(init, .{
-        .filter = .{ .level = .info },
-    });
+    // can also set the runtime level directly without parsing
+    env_logger.init(init, .{ .filter = .{ .level = .debug } });
 
-    std.log.debug("you don't see me", .{});
-    std.log.info("but I am here", .{});
+    // std.log.logEnabled returns false for debug, which will effectively
+    // remove all calls to log.debug at comptime
+    try std.testing.expect(std.log.logEnabled(.debug, .default) == false);
 
-    // env_logger.set_log_level(.debug);
+    // env_logger still reports that debug is enabled according to the filter logic
+    try std.testing.expect(env_logger.levelEnabled(.default, .debug) == true);
 
-    std.log.debug("now you see me", .{});
+    // struct does not have a format function, but debug calls are eliminated
+    // so this is never reported by the compiler and compilation succeeds
+    std.log.debug("you will never see me: {f}", .{struct {}});
+    std.log.info("info message", .{});
+    std.log.warn("warn message", .{});
+    std.log.err("error message", .{});
 }
 
 ```
 
-![dynamic_log_level.png](images/dynamic_log_level.png)
+<!-- TODO: ![static_log_level.png](images/static_log_level.png)-->
 
 ### Custom `std.Options`
 
 In case you want to set other `std.Options`, you can use the `env_logger.setupWith` function.
-Alternatively, you can use the `env_logger.setupFn` function and set the `logFn` field.
-This allows you to statically disable certain log levels since the `setup` function sets the `log_level` field to `.debug`.
+Alternatively, you can use the `env_logger.loggerFn` function and set the `logFn` field.
 
 ```zig
 

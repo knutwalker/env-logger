@@ -9,7 +9,7 @@ pub const levelEnabled = Logger.levelEnabled;
 pub const SetupOptions = Logger.SetupOptions;
 pub const setup = Logger.setup;
 pub const setupWith = Logger.setupWith;
-pub const setupFn = Logger.setupFn;
+pub const loggerFn = Logger.loggerFn;
 pub const InitOptions = Logger.InitOptions;
 pub const init = Logger.init;
 pub const initMin = Logger.initMin;
@@ -36,7 +36,7 @@ test "quick example" {
         .filter = .{ .level = .trace },
         .output = .{ .writer = &output.writer },
     });
-    const logger = setupFn(.{ .enable_trace_level = true });
+    const logger = loggerFn(.{ .enable_trace_level = true });
 
     logger(.debug, .default, "TRACE: trace_message", .{});
     logger(.debug, .default, "message 1", .{});

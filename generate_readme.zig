@@ -20,7 +20,7 @@ pub fn main(init: std.process.Init) !void {
         .trace_level = read("examples/trace_level.zig"),
         .custom_env = read("examples/custom_env.zig"),
         .scoped_log = read("examples/scoped_log.zig"),
-        .dynamic_log_level = read("examples/dynamic_log_level.zig"),
+        .static_log_level = read("examples/static_log_level.zig"),
         .custom_std_options = read("examples/custom_std_options.zig"),
         .only_messages = read("examples/only_messages.zig"),
         .add_timestamps = read("examples/add_timestamps.zig"),

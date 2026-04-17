@@ -109,7 +109,7 @@ pub fn build(b: *std.Build) void {
         trace_level,
         custom_env,
         scoped_log,
-        dynamic_log_level,
+        static_log_level,
         custom_std_options,
         only_messages,
         add_timestamps,

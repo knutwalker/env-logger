@@ -7,6 +7,11 @@ const Filter = @import("Filter.zig");
 pub const SetupOptions = struct {
     /// Whether to look for the TRACE message tag
     enable_trace_level: bool = false,
+
+    /// Statically restrict the log_level to this level.
+    /// All messages below this level will be discarded, regardless of the level configured in `init`.
+    /// Configuring lower levels in `init` will not fail.
+    min_log_level: std.log.Level = .debug,
 };
 
 /// Setup the logger using the given options.
@@ -25,14 +30,14 @@ pub fn setup(comptime opts: SetupOptions) std.Options {
 /// For even more control over the std_options, use [`setupFn`].
 pub fn setupWith(comptime opts: SetupOptions, std_opts: std.Options) std.Options {
     var opts_copy = std_opts;
-    opts_copy.log_level = .debug;
-    opts_copy.logFn = setupFn(opts);
+    opts_copy.log_level = opts.min_log_level;
+    opts_copy.logFn = loggerFn(opts);
     return opts_copy;
 }
 
 /// Returns the function that needs to be set as the `log_fn` field to the
 /// [`std.Options`] in your root of the application.
-pub fn setupFn(comptime opts: SetupOptions) fn (
+pub fn loggerFn(comptime opts: SetupOptions) fn (
     comptime message_level: std.log.Level,
     comptime scope: @TypeOf(.enum_literal),
     comptime format: []const u8,
